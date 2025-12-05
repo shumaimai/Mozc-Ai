@@ -1,25 +1,99 @@
 // Copyright 2024 AI Mozc IME Project
 // AI Configuration Manager Implementation
 
-#include "ai/ai_config.h"
+#include "ai_config.h"
 
 #include <fstream>
 #include <sstream>
 #include <cstdlib>
-#include <filesystem>
+#include <cctype>
+#include <iostream>
+#include <sys/stat.h>
 
 #ifdef _WIN32
 #include <windows.h>
 #include <shlobj.h>
+#include <direct.h>
+#define MKDIR(path) _mkdir(path)
 #else
 #include <unistd.h>
 #include <pwd.h>
+#include <sys/types.h>
+#define MKDIR(path) mkdir(path, 0755)
 #endif
 
 namespace mozc {
 namespace ai {
 
 namespace {
+
+// Build log helper - outputs to stderr for visibility during build
+void BuildLog(const std::string& msg) {
+  std::cerr << "[AI-Mozc] " << msg << std::endl;
+}
+
+// Create directory recursively (cross-platform, no std::filesystem dependency)
+bool CreateDirectoryRecursive(const std::string& path) {
+  if (path.empty()) return true;
+
+  std::string current_path;
+  std::string remaining = path;
+
+#ifdef _WIN32
+  // Handle Windows paths
+  if (remaining.size() >= 2 && remaining[1] == ':') {
+    current_path = remaining.substr(0, 3);  // "C:\"
+    remaining = remaining.substr(3);
+  }
+  char separator = '\\';
+#else
+  if (!remaining.empty() && remaining[0] == '/') {
+    current_path = "/";
+    remaining = remaining.substr(1);
+  }
+  char separator = '/';
+#endif
+
+  size_t pos = 0;
+  while ((pos = remaining.find(separator)) != std::string::npos || !remaining.empty()) {
+    std::string component;
+    if (pos != std::string::npos) {
+      component = remaining.substr(0, pos);
+      remaining = remaining.substr(pos + 1);
+    } else {
+      component = remaining;
+      remaining.clear();
+    }
+
+    if (component.empty()) continue;
+
+    if (!current_path.empty() && current_path.back() != separator) {
+      current_path += separator;
+    }
+    current_path += component;
+
+    struct stat st;
+    if (stat(current_path.c_str(), &st) != 0) {
+      if (MKDIR(current_path.c_str()) != 0 && errno != EEXIST) {
+        BuildLog("Failed to create directory: " + current_path);
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+// Get parent directory path
+std::string GetParentPath(const std::string& path) {
+#ifdef _WIN32
+  char separator = '\\';
+#else
+  char separator = '/';
+#endif
+  size_t pos = path.rfind(separator);
+  if (pos == std::string::npos) return "";
+  return path.substr(0, pos);
+}
 
 // Get user profile directory
 std::string GetUserProfileDirectory() {
@@ -55,6 +129,8 @@ std::string GetUserProfileDirectory() {
 class SimpleJsonParser {
  public:
   static bool Parse(const std::string& json, AIConfig& config) {
+    BuildLog("Parsing configuration JSON...");
+
     // Parse enabled
     config.enabled = GetBool(json, "enabled", true);
 
@@ -106,6 +182,7 @@ class SimpleJsonParser {
     config.debug.disable_ai = GetBool(json, "disable_ai", false);
     config.debug.use_mock = GetBool(json, "use_mock", false);
 
+    BuildLog("Configuration parsed successfully");
     return true;
   }
 
@@ -186,12 +263,16 @@ class SimpleJsonParser {
     }
 
     std::string num_str;
-    while (pos < json.size() && (std::isdigit(json[pos]) || json[pos] == '-')) {
+    while (pos < json.size() && (std::isdigit(static_cast<unsigned char>(json[pos])) || json[pos] == '-')) {
       num_str += json[pos++];
     }
 
     if (num_str.empty()) return default_value;
-    return std::stoi(num_str);
+    try {
+      return std::stoi(num_str);
+    } catch (...) {
+      return default_value;
+    }
   }
 
   static bool GetBool(const std::string& json, const std::string& key,
@@ -203,12 +284,17 @@ class SimpleJsonParser {
     pos = json.find(':', pos);
     if (pos == std::string::npos) return default_value;
 
-    if (json.find("true", pos) < json.find(',', pos) ||
-        json.find("true", pos) < json.find('}', pos)) {
+    size_t comma_pos = json.find(',', pos);
+    size_t brace_pos = json.find('}', pos);
+    size_t end_pos = std::min(comma_pos, brace_pos);
+
+    size_t true_pos = json.find("true", pos);
+    size_t false_pos = json.find("false", pos);
+
+    if (true_pos != std::string::npos && true_pos < end_pos) {
       return true;
     }
-    if (json.find("false", pos) < json.find(',', pos) ||
-        json.find("false", pos) < json.find('}', pos)) {
+    if (false_pos != std::string::npos && false_pos < end_pos) {
       return false;
     }
     return default_value;
@@ -223,8 +309,10 @@ AIConfigManager& AIConfigManager::Instance() {
 }
 
 AIConfigManager::AIConfigManager() {
+  BuildLog("Initializing AIConfigManager...");
   config_ = GetDefaultConfig();
   Load();
+  BuildLog("AIConfigManager initialized");
 }
 
 AIConfig AIConfigManager::GetDefaultConfig() {
@@ -280,10 +368,12 @@ void AIConfigManager::Load() {
   std::lock_guard<std::mutex> lock(mutex_);
 
   std::string path = GetConfigPath();
+  BuildLog("Loading config from: " + path);
 
   // Check if file exists
   std::ifstream file(path);
   if (!file.is_open()) {
+    BuildLog("Config file not found, creating default config");
     // File doesn't exist, save default config
     SaveToJson(path);
     loaded_ = true;
@@ -300,12 +390,16 @@ void AIConfigManager::Load() {
   AIConfig loaded_config;
   if (SimpleJsonParser::Parse(content, loaded_config)) {
     config_ = loaded_config;
+    BuildLog("Config loaded successfully");
+  } else {
+    BuildLog("Failed to parse config, using defaults");
   }
 
   loaded_ = true;
 }
 
 void AIConfigManager::Reload() {
+  BuildLog("Reloading configuration...");
   loaded_ = false;
   Load();
 }
@@ -313,6 +407,7 @@ void AIConfigManager::Reload() {
 bool AIConfigManager::LoadFromJson(const std::string& path) {
   std::ifstream file(path);
   if (!file.is_open()) {
+    BuildLog("Cannot open file: " + path);
     return false;
   }
 
@@ -326,18 +421,23 @@ bool AIConfigManager::LoadFromJson(const std::string& path) {
 
 bool AIConfigManager::SaveToJson(const std::string& path) const {
   // Create directory if it doesn't exist
-  std::filesystem::path dir_path = std::filesystem::path(path).parent_path();
+  std::string dir_path = GetParentPath(path);
   if (!dir_path.empty()) {
-    std::filesystem::create_directories(dir_path);
+    if (!CreateDirectoryRecursive(dir_path)) {
+      BuildLog("Failed to create config directory: " + dir_path);
+      return false;
+    }
   }
 
   std::ofstream file(path);
   if (!file.is_open()) {
+    BuildLog("Cannot create config file: " + path);
     return false;
   }
 
   file << SimpleJsonParser::Serialize(config_);
   file.close();
+  BuildLog("Config saved to: " + path);
   return true;
 }
 

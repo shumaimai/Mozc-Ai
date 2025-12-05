@@ -2,6 +2,8 @@
 
 Mozc（Google日本語入力）にローカルAI（Ollama）を統合し、文脈に基づいた変換候補を追加するIME。
 
+**[📖 詳細なセットアップガイド（Getting Started）](docs/GETTING_STARTED.md)**
+
 ## 最重要設計原則
 
 ```
@@ -12,6 +14,51 @@ Mozc（Google日本語入力）にローカルAI（Ollama）を統合し、文�
 ║  • 全てのAI処理は「あれば嬉しい」程度の位置づけ                   ║
 ║  • 1msでも長く待たせるくらいなら、AI候補は諦める                  ║
 ╚══════════════════════════════════════════════════════════════════╝
+```
+
+## クイックスタート
+
+### 1. 前提条件をインストール
+
+**Windows:**
+```powershell
+# Chocolateyを使用
+choco install bazelisk git visualstudio2022community
+```
+
+**Linux (Ubuntu/Debian):**
+```bash
+sudo apt install -y build-essential git
+curl -Lo /usr/local/bin/bazel https://github.com/bazelbuild/bazelisk/releases/latest/download/bazelisk-linux-amd64
+chmod +x /usr/local/bin/bazel
+```
+
+### 2. Ollamaをセットアップ
+
+```bash
+# インストール (Linux/macOS)
+curl -fsSL https://ollama.ai/install.sh | sh
+
+# Windowsの場合は https://ollama.ai からダウンロード
+
+# モデルをダウンロード
+ollama pull mistral:7b
+```
+
+### 3. ビルドと実行
+
+```bash
+# クローン
+git clone <repository-url> ai_mozc
+cd ai_mozc
+
+# ビルド
+./scripts/build.sh        # Linux/macOS
+.\scripts\build.ps1       # Windows
+
+# テスト
+./scripts/build.sh --test # Linux/macOS
+.\scripts\build.ps1 -Test # Windows
 ```
 
 ## アーキテクチャ
@@ -42,91 +89,35 @@ Mozc（Google日本語入力）にローカルAI（Ollama）を統合し、文�
 ## ディレクトリ構成
 
 ```
-src/
-├── ai/                          # AI関連モジュール
-│   ├── ai_config.proto          # 設定定義
-│   ├── ai_config.h/cc           # 設定マネージャー
-│   ├── ai_candidate_cache.h/cc  # キャッシュ
-│   ├── ai_worker.h/cc           # ワーカースレッド
-│   ├── ai_backend.h             # バックエンド抽象化
-│   ├── ollama_backend.cc        # Ollamaバックエンド
-│   ├── mock_backend.cc          # モックバックエンド
-│   ├── ai_logger.h/cc           # ロギング
-│   └── BUILD
-├── rewriter/
-│   ├── rewriter_interface.h     # Mozcインターフェース
-│   ├── ai_rewriter.h/cc         # AIリライター
-│   └── BUILD
-└── ...
+ai_mozc/
+├── src/
+│   ├── ai/                          # AI関連モジュール
+│   │   ├── ai_config.h/cc           # 設定マネージャー
+│   │   ├── ai_candidate_cache.h/cc  # キャッシュ
+│   │   ├── ai_worker.h/cc           # ワーカースレッド
+│   │   ├── ai_backend.h             # バックエンド抽象化
+│   │   ├── ollama_backend.cc        # Ollamaバックエンド
+│   │   ├── mock_backend.cc          # モックバックエンド
+│   │   ├── ai_logger.h/cc           # ロギング
+│   │   └── BUILD
+│   └── rewriter/
+│       ├── rewriter_interface.h     # Mozcインターフェース
+│       ├── ai_rewriter.h/cc         # AIリライター
+│       └── BUILD
+├── docs/
+│   └── GETTING_STARTED.md           # 詳細セットアップガイド
+├── scripts/
+│   ├── build.ps1                    # Windows用ビルドスクリプト
+│   └── build.sh                     # Linux用ビルドスクリプト
+├── WORKSPACE                         # Bazel設定
+└── .bazelrc                          # Bazelオプション
 ```
-
-## 前提条件
-
-### Windows
-
-- Windows 10/11
-- Visual Studio 2022（C++ワークロード）
-- Bazelisk (`choco install bazelisk`)
-- Ollama (https://ollama.ai)
-
-### Linux
-
-- GCC 9+ または Clang 10+
-- Bazelisk
-- Ollama
-
-## ビルド方法
-
-### Windows (PowerShell)
-
-```powershell
-# デバッグビルド
-.\scripts\build.ps1
-
-# リリースビルド
-.\scripts\build.ps1 -Release
-
-# テスト付きビルド
-.\scripts\build.ps1 -Test
-
-# クリーンビルド
-.\scripts\build.ps1 -Clean
-```
-
-### Linux/macOS
-
-```bash
-# デバッグビルド
-./scripts/build.sh
-
-# リリースビルド
-./scripts/build.sh --release
-
-# テスト付きビルド
-./scripts/build.sh --test
-
-# クリーンビルド
-./scripts/build.sh --clean
-```
-
-## Ollama設定
-
-1. Ollamaをインストール
-2. モデルをダウンロード:
-   ```bash
-   ollama pull mistral:7b
-   ```
-3. Ollamaを起動（自動起動されない場合）:
-   ```bash
-   ollama serve
-   ```
 
 ## 設定ファイル
 
-設定ファイルは以下の場所に保存されます:
-
-- Windows: `%LOCALAPPDATA%\Google\Mozc\ai_config.json`
-- Linux: `~/.mozc/ai_config.json`
+設定ファイルの場所:
+- **Windows**: `%LOCALAPPDATA%\Google\Mozc\ai_config.json`
+- **Linux/macOS**: `~/.mozc/ai_config.json`
 
 ### 設定例
 
@@ -143,6 +134,7 @@ src/
   "cache_max_entries": 100,
   "history_size": 5,
   "log_level": "info",
+  "log_ai_communication": false,
   "disable_ai": false,
   "use_mock": false
 }
@@ -155,7 +147,65 @@ src/
 | 設計 | 完全非同期 | AI処理は別スレッド、結果は次回変換で使用 |
 | タイムアウト | 二重タイムアウト | 接続50ms + 処理500ms = 最大550ms |
 | フォールバック | 即時降格 | 少しでも異常があればAI機能を即座にスキップ |
-| 監視 | ウォッチドッグ | AI処理が長引いたら強制キャンセル |
+| オーバーフロー | キュー制限 | 最大10リクエスト、超過分は破棄 |
+
+## デバッグ・ログ
+
+### ログファイルの場所
+- **Windows**: `%LOCALAPPDATA%\Google\Mozc\ai_log.txt`
+- **Linux/macOS**: `~/.mozc/ai_log.txt`
+
+### ログの確認
+
+```bash
+# Linux/macOS
+tail -f ~/.mozc/ai_log.txt
+
+# Windows (PowerShell)
+Get-Content -Wait $env:LOCALAPPDATA\Google\Mozc\ai_log.txt
+```
+
+### デバッグモードの有効化
+
+設定ファイルで以下を変更:
+```json
+{
+  "log_level": "debug",
+  "log_ai_communication": true
+}
+```
+
+### ビルド時のログ出力
+
+ビルド中のエラーは標準エラー出力（stderr）に `[AI-Mozc]` プレフィックス付きで出力されます:
+```
+[AI-Mozc] Initializing AIConfigManager...
+[AI-Mozc] Loading config from: /home/user/.mozc/ai_config.json
+[AI-Mozc] Config loaded successfully
+```
+
+## トラブルシューティング
+
+### Ollamaに接続できない
+
+```bash
+# サービスの状態確認
+curl http://localhost:11434/api/tags
+
+# サービスを起動
+ollama serve
+```
+
+### AI候補が表示されない
+
+1. Ollamaが起動しているか確認: `curl http://localhost:11434/api/tags`
+2. モデルがダウンロード済みか確認: `ollama list`
+3. 設定ファイルで `enabled: true` になっているか確認
+4. ログファイルを確認
+
+### ビルドエラー
+
+詳細は [Getting Started Guide](docs/GETTING_STARTED.md#トラブルシューティング) を参照してください。
 
 ## テスト
 
@@ -169,14 +219,10 @@ bazelisk test //src/ai:ai_config_test
 bazelisk test //src/ai:ai_backend_test
 bazelisk test //src/ai:ai_worker_test
 bazelisk test //src/rewriter:ai_rewriter_test
+
+# 詳細出力
+bazelisk test --test_output=all //src/ai:all
 ```
-
-## ログ
-
-ログファイルは以下の場所に保存されます:
-
-- Windows: `%LOCALAPPDATA%\Google\Mozc\ai_log.txt`
-- Linux: `~/.mozc/ai_log.txt`
 
 ## ライセンス
 
@@ -186,6 +232,12 @@ bazelisk test //src/rewriter:ai_rewriter_test
 
 バグ報告や機能リクエストはIssueをお開きください。
 プルリクエストも歓迎します。
+
+## 関連ドキュメント
+
+- [詳細セットアップガイド（Getting Started）](docs/GETTING_STARTED.md)
+- [Mozc公式リポジトリ](https://github.com/google/mozc)
+- [Ollama公式サイト](https://ollama.ai)
 
 ## 謝辞
 

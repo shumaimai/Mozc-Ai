@@ -1,20 +1,26 @@
 // Copyright 2024 AI Mozc IME Project
 // AI Logger Implementation
 
-#include "ai/ai_logger.h"
+#include "ai_logger.h"
+#include "ai_config.h"
 
 #include <iostream>
 #include <sstream>
 #include <iomanip>
 #include <ctime>
-#include <filesystem>
+#include <cstdlib>
+#include <sys/stat.h>
 
 #ifdef _WIN32
 #include <windows.h>
 #include <shlobj.h>
+#include <direct.h>
+#define MKDIR(path) _mkdir(path)
 #else
 #include <unistd.h>
 #include <pwd.h>
+#include <sys/types.h>
+#define MKDIR(path) mkdir(path, 0755)
 #endif
 
 namespace mozc {
@@ -26,6 +32,55 @@ std::ofstream AILogger::log_file_;
 bool AILogger::initialized_ = false;
 
 namespace {
+
+// Create directory recursively (cross-platform, no std::filesystem dependency)
+bool CreateDirectoryRecursive(const std::string& path) {
+  if (path.empty()) return true;
+
+  std::string current_path;
+  std::string remaining = path;
+
+#ifdef _WIN32
+  if (remaining.size() >= 2 && remaining[1] == ':') {
+    current_path = remaining.substr(0, 3);
+    remaining = remaining.substr(3);
+  }
+  char separator = '\\';
+#else
+  if (!remaining.empty() && remaining[0] == '/') {
+    current_path = "/";
+    remaining = remaining.substr(1);
+  }
+  char separator = '/';
+#endif
+
+  size_t pos = 0;
+  while ((pos = remaining.find(separator)) != std::string::npos || !remaining.empty()) {
+    std::string component;
+    if (pos != std::string::npos) {
+      component = remaining.substr(0, pos);
+      remaining = remaining.substr(pos + 1);
+    } else {
+      component = remaining;
+      remaining.clear();
+    }
+
+    if (component.empty()) continue;
+
+    if (!current_path.empty() && current_path.back() != separator) {
+      current_path += separator;
+    }
+    current_path += component;
+
+    struct stat st;
+    if (stat(current_path.c_str(), &st) != 0) {
+      if (MKDIR(current_path.c_str()) != 0 && errno != EEXIST) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
 
 std::string GetUserLogDirectory() {
 #ifdef _WIN32
@@ -65,11 +120,7 @@ void AILogger::Initialize() {
   std::string log_dir = GetUserLogDirectory();
 
   // Create directory if needed
-  try {
-    std::filesystem::create_directories(log_dir);
-  } catch (...) {
-    // Ignore directory creation errors
-  }
+  CreateDirectoryRecursive(log_dir);
 
   std::string log_path = log_dir +
 #ifdef _WIN32
@@ -80,6 +131,9 @@ void AILogger::Initialize() {
 
   log_file_.open(log_path, std::ios::app);
   initialized_ = true;
+
+  // Log initialization
+  std::cerr << "[AI-Mozc Logger] Initialized, log path: " << log_path << std::endl;
 }
 
 std::string AILogger::GetLogPath() {
@@ -109,6 +163,8 @@ void AILogger::Warn(const std::string& msg) {
 
 void AILogger::Error(const std::string& msg) {
   Log(LogLevel::ERROR, msg);
+  // Also output to stderr for visibility
+  std::cerr << "[AI-Mozc ERROR] " << msg << std::endl;
 }
 
 void AILogger::Perf(const std::string& operation, int64_t elapsed_ms) {
@@ -156,11 +212,7 @@ void AILogger::Log(LogLevel level, const std::string& msg) {
   if (!initialized_) {
     // Initialize on first use
     std::string log_dir = GetUserLogDirectory();
-    try {
-      std::filesystem::create_directories(log_dir);
-    } catch (...) {
-      // Ignore
-    }
+    CreateDirectoryRecursive(log_dir);
 
     std::string log_path = log_dir +
 #ifdef _WIN32
@@ -174,6 +226,8 @@ void AILogger::Log(LogLevel level, const std::string& msg) {
   }
 
   if (!log_file_.is_open()) {
+    // Fallback to stderr
+    std::cerr << "[AI-Mozc] " << GetLevelString(level) << ": " << msg << std::endl;
     return;
   }
 

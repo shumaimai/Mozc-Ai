@@ -5,10 +5,19 @@ load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
+# Common compiler options
+COPTS = [
+    "-std=c++17",
+    "-Wall",
+    "-Wextra",
+]
+
 # Rewriter Interface
 cc_library(
     name = "rewriter_interface",
     hdrs = ["rewriter_interface.h"],
+    copts = COPTS,
+    includes = ["."],
 )
 
 # AI Rewriter
@@ -16,14 +25,16 @@ cc_library(
     name = "ai_rewriter",
     srcs = ["ai_rewriter.cc"],
     hdrs = ["ai_rewriter.h"],
+    copts = COPTS,
     defines = ["ENABLE_AI_REWRITER"],
+    includes = ["."],
     deps = [
         ":rewriter_interface",
-        "//ai:ai_backend",
-        "//ai:ai_candidate_cache",
-        "//ai:ai_config",
-        "//ai:ai_logger",
-        "//ai:ai_worker",
+        "//src/ai:ai_backend",
+        "//src/ai:ai_candidate_cache",
+        "//src/ai:ai_config",
+        "//src/ai:ai_logger",
+        "//src/ai:ai_worker",
     ],
 )
 
@@ -32,6 +43,7 @@ cc_library(
 cc_test(
     name = "ai_rewriter_test",
     srcs = ["ai_rewriter_test.cc"],
+    copts = COPTS,
     deps = [
         ":ai_rewriter",
         "@com_google_googletest//:gtest_main",

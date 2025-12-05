@@ -2,12 +2,15 @@
 // AI Rewriter Implementation
 // CRITICAL: All methods in this file MUST be non-blocking
 
-#include "rewriter/ai_rewriter.h"
-#include "ai/ai_config.h"
-#include "ai/ai_backend.h"
-#include "ai/ai_logger.h"
+#include "ai_rewriter.h"
+#include "../ai/ai_config.h"
+#include "../ai/ai_backend.h"
+#include "../ai/ai_logger.h"
 
 #include <algorithm>
+#include <iostream>
+
+#define AI_LOG(msg) std::cerr << "[AI-Mozc Rewriter] " << msg << std::endl
 
 namespace mozc {
 

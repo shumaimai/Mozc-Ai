@@ -13,8 +13,8 @@
 #include <string>
 #include <vector>
 
-#include "ai/ai_candidate_cache.h"
-#include "ai/ai_backend.h"
+#include "ai_candidate_cache.h"
+#include "ai_backend.h"
 
 namespace mozc {
 namespace ai {

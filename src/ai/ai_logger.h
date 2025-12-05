@@ -9,7 +9,7 @@
 #include <mutex>
 #include <chrono>
 
-#include "ai/ai_config.h"
+#include "ai_config.h"
 
 namespace mozc {
 namespace ai {

@@ -1,10 +1,11 @@
 // Copyright 2024 AI Mozc IME Project
 // AI Worker Implementation - Asynchronous AI Processing
 
-#include "ai/ai_worker.h"
-#include "ai/ai_config.h"
+#include "ai_worker.h"
+#include "ai_config.h"
 
 #include <chrono>
+#include <iostream>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -12,6 +13,8 @@
 #include <pthread.h>
 #include <sched.h>
 #endif
+
+#define AI_LOG(msg) std::cerr << "[AI-Mozc Worker] " << msg << std::endl
 
 namespace mozc {
 namespace ai {

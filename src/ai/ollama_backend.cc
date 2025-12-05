@@ -1,12 +1,16 @@
 // Copyright 2024 AI Mozc IME Project
 // Ollama Backend Implementation
 
-#include "ai/ai_backend.h"
+#include "ai_backend.h"
+#include "ai_config.h"
 
 #include <sstream>
 #include <chrono>
 #include <algorithm>
 #include <cstring>
+#include <cctype>
+#include <iostream>
+#include <cerrno>
 
 #ifdef _WIN32
 #include <winsock2.h>
@@ -22,7 +26,11 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <netdb.h>
+#include <errno.h>
 #endif
+
+// Build logging
+#define AI_LOG(msg) std::cerr << "[AI-Mozc Backend] " << msg << std::endl
 
 namespace mozc {
 namespace ai {

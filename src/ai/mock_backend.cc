@@ -1,10 +1,15 @@
 // Copyright 2024 AI Mozc IME Project
 // Mock Backend Implementation for Testing
 
-#include "ai/ai_backend.h"
+#include "ai_backend.h"
+#include "ai_config.h"
 
 #include <thread>
 #include <chrono>
+#include <iostream>
+#include <cstdlib>
+
+#define AI_LOG(msg) std::cerr << "[AI-Mozc Mock] " << msg << std::endl
 
 namespace mozc {
 namespace ai {

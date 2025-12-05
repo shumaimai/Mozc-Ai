@@ -12,9 +12,9 @@
 #include <string>
 #include <vector>
 
-#include "rewriter/rewriter_interface.h"
-#include "ai/ai_candidate_cache.h"
-#include "ai/ai_worker.h"
+#include "rewriter_interface.h"
+#include "../ai/ai_candidate_cache.h"
+#include "../ai/ai_worker.h"
 
 namespace mozc {
 

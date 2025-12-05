@@ -5,6 +5,13 @@ load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
+# Common compiler options
+COPTS = [
+    "-std=c++17",
+    "-Wall",
+    "-Wextra",
+]
+
 # Proto library for AI configuration
 proto_library(
     name = "ai_config_proto_lib",
@@ -21,6 +28,8 @@ cc_library(
     name = "ai_config",
     srcs = ["ai_config.cc"],
     hdrs = ["ai_config.h"],
+    copts = COPTS,
+    includes = ["."],
     deps = [
         # ":ai_config_proto",  # Enable when using protobuf
     ],
@@ -31,6 +40,8 @@ cc_library(
     name = "ai_logger",
     srcs = ["ai_logger.cc"],
     hdrs = ["ai_logger.h"],
+    copts = COPTS,
+    includes = ["."],
     deps = [
         ":ai_config",
     ],
@@ -41,6 +52,8 @@ cc_library(
     name = "ai_candidate_cache",
     srcs = ["ai_candidate_cache.cc"],
     hdrs = ["ai_candidate_cache.h"],
+    copts = COPTS,
+    includes = ["."],
 )
 
 # AI Backend Interface and Implementations
@@ -51,6 +64,8 @@ cc_library(
         "mock_backend.cc",
     ],
     hdrs = ["ai_backend.h"],
+    copts = COPTS,
+    includes = ["."],
     deps = [
         ":ai_config",
     ],
@@ -68,6 +83,8 @@ cc_library(
     name = "ai_worker",
     srcs = ["ai_worker.cc"],
     hdrs = ["ai_worker.h"],
+    copts = COPTS,
+    includes = ["."],
     deps = [
         ":ai_backend",
         ":ai_candidate_cache",
@@ -79,6 +96,8 @@ cc_library(
 # Combined AI library
 cc_library(
     name = "ai",
+    copts = COPTS,
+    includes = ["."],
     deps = [
         ":ai_backend",
         ":ai_candidate_cache",
@@ -93,6 +112,7 @@ cc_library(
 cc_test(
     name = "ai_candidate_cache_test",
     srcs = ["ai_candidate_cache_test.cc"],
+    copts = COPTS,
     deps = [
         ":ai_candidate_cache",
         "@com_google_googletest//:gtest_main",
@@ -102,6 +122,7 @@ cc_test(
 cc_test(
     name = "ai_config_test",
     srcs = ["ai_config_test.cc"],
+    copts = COPTS,
     deps = [
         ":ai_config",
         "@com_google_googletest//:gtest_main",
@@ -111,6 +132,7 @@ cc_test(
 cc_test(
     name = "ai_backend_test",
     srcs = ["ai_backend_test.cc"],
+    copts = COPTS,
     deps = [
         ":ai_backend",
         "@com_google_googletest//:gtest_main",
@@ -120,6 +142,7 @@ cc_test(
 cc_test(
     name = "ai_worker_test",
     srcs = ["ai_worker_test.cc"],
+    copts = COPTS,
     deps = [
         ":ai_backend",
         ":ai_candidate_cache",
