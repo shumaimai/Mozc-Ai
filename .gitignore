@@ -1,0 +1,41 @@
+# Bazel
+/bazel-*
+*.bazelproject
+
+# Build outputs
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.dylib
+*.a
+*.lib
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Generated files
+*.pb.h
+*.pb.cc
+
+# User config (may contain API keys)
+ai_config.json
+
+# Test outputs
+/testoutput/
+
+# Temporary files
+*.tmp
+*.temp
