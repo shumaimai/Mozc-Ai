@@ -244,6 +244,47 @@ bazelisk clean --expunge
 
 ---
 
+### エラー #7: インクルードパスエラー（再発）
+
+**発生日**: 2024年
+**症状**:
+```
+fatal error C1083: include ファイルを開けません。'ai/ai_candidate_cache.h':No such file or directory
+```
+または類似の「ファイルが見つからない」エラー
+
+**原因**:
+ソースファイル内のインクルードパスが誤った形式になっている。
+- 誤: `#include "ai/ai_config.h"` （サブディレクトリ形式）
+- 正: `#include "ai_config.h"` （同一ディレクトリ形式）
+
+Bazelの`includes = ["."]`設定により、同一パッケージ内のファイルは直接参照可能。
+
+**修正内容**:
+以下のファイルのインクルードパスを修正:
+- `src/ai/ai_candidate_cache.cc`
+- `src/ai/ai_backend.h`
+- `src/ai/ai_backend_test.cc`
+- `src/ai/ai_config_test.cc`
+- `src/ai/ai_candidate_cache_test.cc`
+- `src/ai/ai_worker_test.cc`
+- `src/rewriter/ai_rewriter_test.cc`
+
+**修正例**:
+```cpp
+// 修正前
+#include "ai/ai_config.h"
+#include "rewriter/ai_rewriter.h"
+
+// 修正後
+#include "ai_config.h"
+#include "ai_rewriter.h"
+```
+
+**注意**: 異なるパッケージ（src/ai と src/rewriter 間）のインクルードは `../ai/ai_config.h` 形式を使用。
+
+---
+
 ## 修正履歴
 
 | 日付 | コミット | 内容 |
@@ -253,7 +294,8 @@ bazelisk clean --expunge
 | 2024 | b1d0f27 | fix #3: 日本語パス問題のドキュメント追加、PowerShellスクリプト改善 |
 | 2024 | f8b794e | fix #4: Bazel 8 (bzlmod) 対応 |
 | 2024 | 368f2b1 | fix #4 update: MODULE.bazelバージョン修正、エラー#5ドキュメント追加 |
-| 2024 | (current) | fix #6: BAZEL_VC自動検出機能追加 |
+| 2024 | 0d4bee4 | fix #6: BAZEL_VC自動検出機能追加 |
+| 2024 | (current) | fix #7: インクルードパスエラー（再発）修正 |
 
 ---
 

@@ -1,8 +1,8 @@
 // Copyright 2024 AI Mozc IME Project
 // Unit tests for AI Rewriter
 
-#include "rewriter/ai_rewriter.h"
-#include "rewriter/rewriter_interface.h"
+#include "ai_rewriter.h"
+#include "rewriter_interface.h"
 
 #include <thread>
 #include <chrono>

@@ -1,7 +1,7 @@
 // Copyright 2024 AI Mozc IME Project
 // Unit tests for AI Configuration Manager
 
-#include "ai/ai_config.h"
+#include "ai_config.h"
 
 #include "gtest/gtest.h"
 

@@ -1,9 +1,9 @@
 // Copyright 2024 AI Mozc IME Project
 // Unit tests for AI Worker
 
-#include "ai/ai_worker.h"
-#include "ai/ai_candidate_cache.h"
-#include "ai/ai_backend.h"
+#include "ai_worker.h"
+#include "ai_candidate_cache.h"
+#include "ai_backend.h"
 
 #include <thread>
 #include <chrono>

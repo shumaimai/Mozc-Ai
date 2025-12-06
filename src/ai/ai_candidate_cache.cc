@@ -1,7 +1,7 @@
 // Copyright 2024 AI Mozc IME Project
 // AI Candidate Cache Implementation
 
-#include "ai/ai_candidate_cache.h"
+#include "ai_candidate_cache.h"
 
 #include <algorithm>
 #include <limits>

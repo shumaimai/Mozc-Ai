@@ -1,7 +1,7 @@
 // Copyright 2024 AI Mozc IME Project
 // Unit tests for AI Backend
 
-#include "ai/ai_backend.h"
+#include "ai_backend.h"
 
 #include "gtest/gtest.h"
 

@@ -1,7 +1,7 @@
 // Copyright 2024 AI Mozc IME Project
 // Unit tests for AI Candidate Cache
 
-#include "ai/ai_candidate_cache.h"
+#include "ai_candidate_cache.h"
 
 #include <thread>
 #include <vector>
