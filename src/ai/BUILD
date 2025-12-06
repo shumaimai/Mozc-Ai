@@ -12,16 +12,17 @@ COPTS = [
     "-Wextra",
 ]
 
-# Proto library for AI configuration
-proto_library(
-    name = "ai_config_proto_lib",
-    srcs = ["ai_config.proto"],
-)
-
-cc_proto_library(
-    name = "ai_config_proto",
-    deps = [":ai_config_proto_lib"],
-)
+# Proto library for AI configuration (disabled - requires rules_proto setup)
+# Uncomment these when integrating with Mozc's protobuf infrastructure
+# proto_library(
+#     name = "ai_config_proto_lib",
+#     srcs = ["ai_config.proto"],
+# )
+#
+# cc_proto_library(
+#     name = "ai_config_proto",
+#     deps = [":ai_config_proto_lib"],
+# )
 
 # AI Configuration Manager
 cc_library(

@@ -1,10 +1,6 @@
 # Copyright 2024 AI Mozc IME Project
 # Bazel configuration file
 
-# C++ standard
-build --cxxopt=-std=c++17
-build --host_cxxopt=-std=c++17
-
 # Enable debug symbols by default
 build --compilation_mode=dbg
 
@@ -12,14 +8,15 @@ build --compilation_mode=dbg
 build:release --compilation_mode=opt
 build:release --copt=-O2
 
-# Windows specific configuration
+# Windows specific configuration (MSVC)
 build:windows --cxxopt=/std:c++17
 build:windows --host_cxxopt=/std:c++17
 build:windows --enable_runfiles
 build:windows --define ENABLE_AI_REWRITER=1
 
-# Linux specific configuration
+# Linux specific configuration (GCC/Clang)
 build:linux --cxxopt=-std=c++17
+build:linux --host_cxxopt=-std=c++17
 build:linux --define ENABLE_AI_REWRITER=1
 
 # OSS Windows build (matching Mozc)

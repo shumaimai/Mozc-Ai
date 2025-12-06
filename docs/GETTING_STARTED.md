@@ -296,6 +296,58 @@ bazelisk test //src/ai:all //src/rewriter:all
 
 ## トラブルシューティング
 
+### PowerShellがクラッシュする / 「fatal」エラー
+
+PowerShellでビルドスクリプトを実行中に「fatal」エラーが表示されてクラッシュする場合:
+
+#### 1. 前提条件の確認
+
+```powershell
+# まず前提条件のみをチェック
+.\scripts\build.ps1 -CheckOnly
+```
+
+#### 2. Bazeliskがインストールされているか確認
+
+```powershell
+# Bazeliskのバージョン確認
+bazelisk version
+
+# インストールされていない場合
+# 方法1: Chocolateyを使用
+choco install bazelisk
+
+# 方法2: 手動ダウンロード
+# https://github.com/bazelbuild/bazelisk/releases から
+# bazelisk-windows-amd64.exe をダウンロード
+# C:\Windows または PATH内のフォルダに bazel.exe としてコピー
+```
+
+#### 3. Visual Studio Build Toolsの確認
+
+```powershell
+# Visual Studioが認識されているか確認
+& "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest
+
+# 認識されない場合、Build Toolsをインストール:
+# https://visualstudio.microsoft.com/visual-cpp-build-tools/
+```
+
+#### 4. 長いパス名を有効化（Windows）
+
+```powershell
+# 管理者権限で実行
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\FileSystem" /v LongPathsEnabled /t REG_DWORD /d 1 /f
+```
+
+#### 5. プロジェクトを短いパスに配置
+
+Windowsでは長いパス名が問題になることがあります:
+```powershell
+# 悪い例: C:\Users\長い名前\Documents\Projects\ai_mozc_ime_project\...
+# 良い例: C:\m\ai_mozc
+```
+
 ### ビルドエラー
 
 #### 「filesystem not found」エラー
