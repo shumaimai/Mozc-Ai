@@ -13,7 +13,7 @@ $ErrorActionPreference = "Stop"
 # ==================== Configuration ====================
 $MozcVersion = "2.29.5160.102"
 $OllamaDownloadUrl = "https://ollama.ai/download/windows"
-$DefaultModel = "mistral:7b"
+$DefaultModel = "gemma3:1b"
 $ConfigDir = "$env:LOCALAPPDATA\Google\Mozc"
 
 # ==================== Helper Functions ====================

@@ -142,7 +142,7 @@ cat bazel-testlogs/src/ai/ai_backend_test/test.log
 curl http://localhost:11434/api/tags
 
 # 期待される応答（モデルがある場合）
-# {"models":[{"name":"mistral:7b",...}]}
+# {"models":[{"name":"gemma3:1b",...}]}
 
 # 応答がない場合、Ollamaを起動
 ollama serve
@@ -156,10 +156,10 @@ ollama list
 
 # 出力例
 # NAME           ID           SIZE    MODIFIED
-# mistral:7b     abc123...    4.1 GB  2 days ago
+# gemma3:1b     abc123...    4.1 GB  2 days ago
 
 # モデルがない場合、ダウンロード
-ollama pull mistral:7b
+ollama pull gemma3:1b
 ```
 
 ### 3. 簡単な変換テスト
@@ -167,7 +167,7 @@ ollama pull mistral:7b
 ```bash
 # Ollamaに直接リクエスト（テスト用）
 curl http://localhost:11434/api/generate -d '{
-  "model": "mistral:7b",
+  "model": "gemma3:1b",
   "prompt": "以下の読みに対して変換候補を3つ提案してください：きょう",
   "stream": false
 }'
@@ -360,7 +360,7 @@ bazelisk test //src/ai:all --test_filter=-*SlowTest*
 ### Ollama連携確認
 
 - [ ] Ollamaが起動している
-- [ ] モデル（mistral:7b等）がインストール済み
+- [ ] モデル（gemma3:1b等）がインストール済み
 - [ ] `curl http://localhost:11434/api/tags` が応答する
 
 ### ログ確認

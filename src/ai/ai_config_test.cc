@@ -19,7 +19,7 @@ TEST(AIConfigTest, DefaultConfig) {
 
   // Ollama defaults
   EXPECT_EQ(config.ollama.endpoint, "http://localhost:11434");
-  EXPECT_EQ(config.ollama.model, "mistral:7b");
+  EXPECT_EQ(config.ollama.model, "gemma3:1b");
 
   // Timeout defaults (critical for freeze prevention)
   EXPECT_EQ(config.timeout.connect_timeout_ms, 50);

@@ -354,7 +354,7 @@ undefined reference to `mozc::ai::AIConfigManager::...'
 
 AI処理が遅い場合:
 1. `connect_timeout_ms`と`request_timeout_ms`を短く設定
-2. より軽量なモデルを使用（`mistral:7b` → `phi:2.7b`）
+2. より軽量なモデルを使用（`gemma3:1b` → `phi:2.7b`）
 3. キャッシュサイズを増加
 
 ---
@@ -367,7 +367,7 @@ AI処理が遅い場合:
 |---------|------|-----------|
 | `enabled` | AI機能の有効/無効 | `true` |
 | `backend_type` | バックエンド種類 | `ollama` |
-| `ollama_model` | 使用モデル | `mistral:7b` |
+| `ollama_model` | 使用モデル | `gemma3:1b` |
 | `connect_timeout_ms` | 接続タイムアウト | `50` |
 | `request_timeout_ms` | リクエストタイムアウト | `500` |
 

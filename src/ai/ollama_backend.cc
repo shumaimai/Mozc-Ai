@@ -128,7 +128,7 @@ class OllamaBackend : public AIBackendInterface {
     }
 
     // Set model
-    model_ = config_.model.empty() ? "mistral:7b" : config_.model;
+    model_ = config_.model.empty() ? "gemma3:1b" : config_.model;
 
 #ifdef _WIN32
     // Initialize Winsock

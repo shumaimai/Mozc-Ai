@@ -58,7 +58,7 @@ TEST(AIBackendTest, MockBackendJapaneseCandidates) {
 TEST(AIBackendTest, CreateOllamaBackend) {
   OllamaConfig config;
   config.endpoint = "http://localhost:11434";
-  config.model = "mistral:7b";
+  config.model = "gemma3:1b";
 
   auto backend = CreateOllamaBackend(config);
 
@@ -120,7 +120,7 @@ TEST(AIBackendTest, MockBackendConfigInfo) {
 TEST(AIBackendTest, OllamaBackendConfigInfo) {
   OllamaConfig config;
   config.endpoint = "http://localhost:11434";
-  config.model = "mistral:7b";
+  config.model = "gemma3:1b";
 
   auto backend = CreateOllamaBackend(config);
   ASSERT_TRUE(backend->Initialize());

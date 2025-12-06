@@ -151,7 +151,7 @@ class SimpleJsonParser {
     // Parse ollama config
     config.ollama.endpoint = GetString(json, "ollama_endpoint",
                                         "http://localhost:11434");
-    config.ollama.model = GetString(json, "ollama_model", "mistral:7b");
+    config.ollama.model = GetString(json, "ollama_model", "gemma3:1b");
 
     // Parse groq config
     config.groq.api_key_env = GetString(json, "groq_api_key_env", "GROQ_API_KEY");
@@ -326,7 +326,7 @@ AIConfig AIConfigManager::GetDefaultConfig() {
 
   // Ollama defaults
   config.ollama.endpoint = "http://localhost:11434";
-  config.ollama.model = "mistral:7b";
+  config.ollama.model = "gemma3:1b";
 
   // Timeout defaults (Critical for freeze prevention)
   config.timeout.connect_timeout_ms = 50;    // 50ms - very short

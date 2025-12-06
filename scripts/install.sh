@@ -7,7 +7,7 @@ set -e
 # ==================== Configuration ====================
 INSTALL_PREFIX="${INSTALL_PREFIX:-/usr/local}"
 CONFIG_DIR="${HOME}/.mozc"
-DEFAULT_MODEL="mistral:7b"
+DEFAULT_MODEL="gemma3:1b"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
@@ -189,7 +189,7 @@ install_mozc_ai() {
   "enabled": true,
   "backend_type": "ollama",
   "ollama_endpoint": "http://localhost:11434",
-  "ollama_model": "mistral:7b",
+  "ollama_model": "gemma3:1b",
   "connect_timeout_ms": 50,
   "request_timeout_ms": 500,
   "max_wait_ms": 600,

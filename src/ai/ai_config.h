@@ -33,7 +33,7 @@ enum class LogLevel {
 // Ollama configuration
 struct OllamaConfig {
   std::string endpoint = "http://localhost:11434";
-  std::string model = "mistral:7b";
+  std::string model = "gemma3:1b";  // Lightweight model for faster response
 };
 
 // Groq configuration

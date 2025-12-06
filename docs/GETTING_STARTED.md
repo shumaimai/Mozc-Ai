@@ -145,7 +145,7 @@ Ollamaは、ローカルでLLM（大規模言語モデル）を実行するた�
 
 ```powershell
 # モデルをダウンロード（約4GB）
-ollama pull mistral:7b
+ollama pull gemma3:1b
 
 # Ollamaサーバーが自動起動しているか確認
 curl http://localhost:11434/api/tags
@@ -158,7 +158,7 @@ curl http://localhost:11434/api/tags
 curl -fsSL https://ollama.ai/install.sh | sh
 
 # モデルをダウンロード
-ollama pull mistral:7b
+ollama pull gemma3:1b
 
 # サービスを起動（自動起動されない場合）
 ollama serve &
@@ -174,7 +174,7 @@ curl http://localhost:11434/api/tags
 brew install ollama
 
 # モデルをダウンロード
-ollama pull mistral:7b
+ollama pull gemma3:1b
 
 # サービスを起動
 ollama serve &
@@ -184,7 +184,7 @@ ollama serve &
 
 | モデル | サイズ | 速度 | 品質 | コマンド |
 |--------|--------|------|------|----------|
-| mistral:7b | ~4GB | 速い | 良好 | `ollama pull mistral:7b` |
+| gemma3:1b | ~4GB | 速い | 良好 | `ollama pull gemma3:1b` |
 | llama2:7b | ~4GB | 速い | 良好 | `ollama pull llama2:7b` |
 | codellama:7b | ~4GB | 速い | コード特化 | `ollama pull codellama:7b` |
 | mixtral:8x7b | ~26GB | 遅い | 高品質 | `ollama pull mixtral:8x7b` |
@@ -261,7 +261,7 @@ bazelisk test //src/ai:all //src/rewriter:all
   "enabled": true,
   "backend_type": "ollama",
   "ollama_endpoint": "http://localhost:11434",
-  "ollama_model": "mistral:7b",
+  "ollama_model": "gemma3:1b",
   "connect_timeout_ms": 50,
   "request_timeout_ms": 500,
   "max_wait_ms": 600,
@@ -285,7 +285,7 @@ bazelisk test //src/ai:all //src/rewriter:all
 | `enabled` | AI機能の有効/無効 | `true` |
 | `backend_type` | バックエンド種類 (`ollama`, `groq`, `disabled`) | `ollama` |
 | `ollama_endpoint` | OllamaサーバーのURL | `http://localhost:11434` |
-| `ollama_model` | 使用するモデル名 | `mistral:7b` |
+| `ollama_model` | 使用するモデル名 | `gemma3:1b` |
 | `connect_timeout_ms` | 接続タイムアウト（ms） | `50` |
 | `request_timeout_ms` | リクエストタイムアウト（ms） | `500` |
 | `cache_ttl_seconds` | キャッシュ有効期限（秒） | `60` |

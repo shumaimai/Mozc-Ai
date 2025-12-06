@@ -42,7 +42,7 @@ curl -fsSL https://ollama.ai/install.sh | sh
 # Windowsの場合は https://ollama.ai からダウンロード
 
 # モデルをダウンロード
-ollama pull mistral:7b
+ollama pull gemma3:1b
 ```
 
 ### 3. ビルドと実行
@@ -138,7 +138,7 @@ ai_mozc/
   "enabled": true,
   "backend_type": "ollama",
   "ollama_endpoint": "http://localhost:11434",
-  "ollama_model": "mistral:7b",
+  "ollama_model": "gemma3:1b",
   "connect_timeout_ms": 50,
   "request_timeout_ms": 500,
   "max_wait_ms": 600,

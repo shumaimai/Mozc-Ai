@@ -42,7 +42,7 @@ message AIConfig {
 
 message OllamaConfig {
   string endpoint = 1;      // デフォルト: "http://localhost:11434"
-  string model = 2;         // デフォルト: "mistral:7b"
+  string model = 2;         // デフォルト: "gemma3:1b"
 }
 
 message GroqConfig {
