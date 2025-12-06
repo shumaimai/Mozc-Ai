@@ -11,6 +11,7 @@ COPTS = select({
     "@platforms//os:windows": [
         "/std:c++17",
         "/W3",
+        "/utf-8",  # Required for source files containing Japanese characters
     ],
     "//conditions:default": [
         "-std=c++17",
