@@ -370,6 +370,30 @@ bazelisk clean --expunge
 bazelisk build //...
 ```
 
+#### Bazel 8で「rules_cc not found」エラー
+```
+ERROR: Unable to find package for @@[unknown repo 'rules_cc']
+WORKSPACE file is disabled by default in Bazel 8
+```
+
+Bazel 8以降ではWORKSPACEファイルがデフォルトで無効化されています。
+このプロジェクトはMODULE.bazel（bzlmod）に対応済みです。
+
+もし古いBazelを使用する場合は `.bazelrc` に以下を追加：
+```
+common --enable_workspace
+```
+
+#### パッケージが見つからないエラー
+```bash
+# Bazel registryのキャッシュをクリア
+bazelisk clean --expunge
+rm -rf ~/.cache/bazel
+
+# 再ビルド
+bazelisk build //...
+```
+
 ### 実行時エラー
 
 #### Ollamaに接続できない
@@ -431,9 +455,11 @@ ai_mozc/
 │   ├── build.ps1              # Windows用ビルドスクリプト
 │   └── build.sh               # Linux用ビルドスクリプト
 ├── docs/
-│   └── GETTING_STARTED.md     # このファイル
-├── WORKSPACE                   # Bazel設定
-└── .bazelrc                    # Bazelオプション
+│   ├── GETTING_STARTED.md     # このファイル
+│   └── BUILD_ERRORS.md        # エラー・修正記録
+├── MODULE.bazel               # Bazel 8+ 依存関係（bzlmod）
+├── WORKSPACE                  # Bazel 7以前用（非推奨）
+└── .bazelrc                   # Bazelオプション
 ```
 
 ### 新しいバックエンドの追加

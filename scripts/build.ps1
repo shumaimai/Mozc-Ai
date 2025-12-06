@@ -188,7 +188,7 @@ Write-Log "Building with config: $config"
 Write-Host ""
 Write-Log "Building AI module..."
 try {
-    & $bazelPath build --config=windows --config=$config //src/ai:ai 2>&1 | ForEach-Object {
+    & $bazelPath build --config=$config //src/ai:ai 2>&1 | ForEach-Object {
         if ($_ -match "ERROR|error:|fatal") {
             Write-Host "  $_" -ForegroundColor Red
         } elseif ($_ -match "WARNING|warning:") {
@@ -219,7 +219,7 @@ catch {
 Write-Host ""
 Write-Log "Building AIRewriter..."
 try {
-    & $bazelPath build --config=windows --config=$config //src/rewriter:ai_rewriter 2>&1 | ForEach-Object {
+    & $bazelPath build --config=$config //src/rewriter:ai_rewriter 2>&1 | ForEach-Object {
         if ($_ -match "ERROR|error:|fatal") {
             Write-Host "  $_" -ForegroundColor Red
         } elseif ($_ -match "WARNING|warning:") {
@@ -250,7 +250,7 @@ if ($Test) {
     Write-Log "Running tests..."
 
     try {
-        & $bazelPath test --config=windows --config=$config //src/ai:all //src/rewriter:all 2>&1 | ForEach-Object {
+        & $bazelPath test --config=$config //src/ai:all //src/rewriter:all 2>&1 | ForEach-Object {
             if ($_ -match "PASSED") {
                 Write-Host "  $_" -ForegroundColor Green
             } elseif ($_ -match "FAILED") {

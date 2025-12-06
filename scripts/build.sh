@@ -89,11 +89,11 @@ echo "Building with config: $CONFIG"
 # Build
 echo ""
 echo "Building AI module..."
-$BAZEL build --config=linux --config=$CONFIG //src/ai:ai
+$BAZEL build --config=$CONFIG //src/ai:ai
 
 echo ""
 echo "Building AIRewriter..."
-$BAZEL build --config=linux --config=$CONFIG //src/rewriter:ai_rewriter
+$BAZEL build --config=$CONFIG //src/rewriter:ai_rewriter
 
 echo ""
 echo "========================================"
@@ -105,7 +105,7 @@ if [ "$TEST" = true ]; then
     echo ""
     echo "Running tests..."
 
-    if $BAZEL test --config=linux --config=$CONFIG //src/ai:all //src/rewriter:all; then
+    if $BAZEL test --config=$CONFIG //src/ai:all //src/rewriter:all; then
         echo "All tests passed!"
     else
         echo "Warning: Some tests failed"

@@ -5,12 +5,19 @@ load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
-# Common compiler options
-COPTS = [
-    "-std=c++17",
-    "-Wall",
-    "-Wextra",
-]
+# Platform-specific compiler options
+# Windows uses MSVC syntax, Linux/macOS uses GCC/Clang syntax
+COPTS = select({
+    "@platforms//os:windows": [
+        "/std:c++17",
+        "/W3",
+    ],
+    "//conditions:default": [
+        "-std=c++17",
+        "-Wall",
+        "-Wextra",
+    ],
+})
 
 # Rewriter Interface
 cc_library(
@@ -46,6 +53,6 @@ cc_test(
     copts = COPTS,
     deps = [
         ":ai_rewriter",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )

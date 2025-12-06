@@ -5,12 +5,19 @@ load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
-# Common compiler options
-COPTS = [
-    "-std=c++17",
-    "-Wall",
-    "-Wextra",
-]
+# Platform-specific compiler options
+# Windows uses MSVC syntax, Linux/macOS uses GCC/Clang syntax
+COPTS = select({
+    "@platforms//os:windows": [
+        "/std:c++17",
+        "/W3",
+    ],
+    "//conditions:default": [
+        "-std=c++17",
+        "-Wall",
+        "-Wextra",
+    ],
+})
 
 # Proto library for AI configuration (disabled - requires rules_proto setup)
 # Uncomment these when integrating with Mozc's protobuf infrastructure
@@ -116,7 +123,7 @@ cc_test(
     copts = COPTS,
     deps = [
         ":ai_candidate_cache",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -126,7 +133,7 @@ cc_test(
     copts = COPTS,
     deps = [
         ":ai_config",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -136,7 +143,7 @@ cc_test(
     copts = COPTS,
     deps = [
         ":ai_backend",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -148,6 +155,6 @@ cc_test(
         ":ai_backend",
         ":ai_candidate_cache",
         ":ai_worker",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
