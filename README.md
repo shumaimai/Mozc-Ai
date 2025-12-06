@@ -104,13 +104,25 @@ ai_mozc/
 │       ├── rewriter_interface.h     # Mozcインターフェース
 │       ├── ai_rewriter.h/cc         # AIリライター
 │       └── BUILD
-├── docs/
-│   └── GETTING_STARTED.md           # 詳細セットアップガイド
-├── scripts/
+├── docs/                             # ドキュメント
+│   ├── GETTING_STARTED.md           # 入門ガイド
+│   ├── BUILD_GUIDE.md               # ★ビルド詳細・成果物の場所
+│   ├── TESTING_GUIDE.md             # ★テスト・動作確認ガイド
+│   ├── MOZC_INTEGRATION.md          # Mozc統合ガイド
+│   └── BUILD_ERRORS.md              # エラー・修正記録
+├── scripts/                          # スクリプト
 │   ├── build.ps1                    # Windows用ビルドスクリプト
-│   └── build.sh                     # Linux用ビルドスクリプト
-├── WORKSPACE                         # Bazel設定
-└── .bazelrc                          # Bazelオプション
+│   ├── build.sh                     # Linux用ビルドスクリプト
+│   ├── install.ps1                  # Windowsインストーラー
+│   └── install.sh                   # Linuxインストーラー
+├── MODULE.bazel                      # Bazel 8+ 依存関係
+├── WORKSPACE                         # Bazel 7以前用
+├── .bazelrc                          # Bazelオプション
+│
+└── bazel-bin/                        # ★ビルド成果物（自動生成）
+    └── src/
+        ├── ai/                       # libai.a, テスト実行ファイル
+        └── rewriter/                 # libai_rewriter.a
 ```
 
 ## 設定ファイル
@@ -235,11 +247,21 @@ bazelisk test --test_output=all //src/ai:all
 
 ## 関連ドキュメント
 
-- [詳細セットアップガイド（Getting Started）](docs/GETTING_STARTED.md)
-- [Mozc統合ガイド](docs/MOZC_INTEGRATION.md)
-- [ビルドエラー・修正記録](docs/BUILD_ERRORS.md)
+### プロジェクトドキュメント
+
+| ドキュメント | 内容 |
+|-------------|------|
+| [入門ガイド](docs/GETTING_STARTED.md) | 環境構築、セットアップ手順 |
+| [ビルドガイド](docs/BUILD_GUIDE.md) | ★ビルド詳細、成果物の場所、ターゲット一覧 |
+| [テストガイド](docs/TESTING_GUIDE.md) | ★テスト実行、動作確認手順 |
+| [Mozc統合ガイド](docs/MOZC_INTEGRATION.md) | Mozcソースコードへの統合方法 |
+| [エラー・修正記録](docs/BUILD_ERRORS.md) | 既知のエラーと解決策 |
+
+### 外部リンク
+
 - [Mozc公式リポジトリ](https://github.com/google/mozc)
 - [Ollama公式サイト](https://ollama.ai)
+- [Bazel公式ドキュメント](https://bazel.build/)
 
 ## 謝辞
 
