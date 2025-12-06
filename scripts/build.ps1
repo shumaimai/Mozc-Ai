@@ -86,35 +86,98 @@ function Test-Prerequisites {
     }
 }
 
-function Test-VisualStudio {
-    Write-Log "Checking for Visual Studio/Build Tools..."
-
+function Find-VisualCpp {
+    # Find Visual Studio installation using vswhere
     $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+
     if (Test-Path $vswhere) {
+        # Find VS installation with C++ workload
+        $vsPath = & $vswhere -latest -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath 2>$null
+
+        if ($vsPath) {
+            $vcPath = Join-Path $vsPath "VC"
+            if (Test-Path $vcPath) {
+                Write-Log "Found Visual C++: $vcPath" "OK"
+                return @{
+                    VsPath = $vsPath
+                    VcPath = $vcPath
+                }
+            }
+        }
+
+        # Fallback: find any VS installation
         $vsPath = & $vswhere -latest -property installationPath 2>$null
         if ($vsPath) {
-            Write-Log "Found Visual Studio: $vsPath" "OK"
-            return $true
+            $vcPath = Join-Path $vsPath "VC"
+            if (Test-Path $vcPath) {
+                Write-Log "Found Visual Studio: $vsPath" "OK"
+                Write-Log "Note: C++ workload might not be fully installed" "WARN"
+                return @{
+                    VsPath = $vsPath
+                    VcPath = $vcPath
+                }
+            }
         }
     }
 
     # Check for standalone Build Tools
-    $buildToolsPath = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\BuildTools"
-    if (Test-Path $buildToolsPath) {
-        Write-Log "Found Build Tools: $buildToolsPath" "OK"
-        return $true
+    $buildToolsPaths = @(
+        "${env:ProgramFiles}\Microsoft Visual Studio\2022\BuildTools",
+        "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\BuildTools",
+        "${env:ProgramFiles}\Microsoft Visual Studio\2022\Community",
+        "${env:ProgramFiles}\Microsoft Visual Studio\2022\Professional",
+        "${env:ProgramFiles}\Microsoft Visual Studio\2022\Enterprise",
+        "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2019\BuildTools",
+        "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2019\Community"
+    )
+
+    foreach ($path in $buildToolsPaths) {
+        $vcPath = Join-Path $path "VC"
+        if (Test-Path $vcPath) {
+            Write-Log "Found Visual C++: $vcPath" "OK"
+            return @{
+                VsPath = $path
+                VcPath = $vcPath
+            }
+        }
     }
 
-    $buildToolsPath2019 = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2019\BuildTools"
-    if (Test-Path $buildToolsPath2019) {
-        Write-Log "Found Build Tools: $buildToolsPath2019" "OK"
-        return $true
-    }
-
-    Write-Log "Visual Studio/Build Tools not found" "WARN"
-    Write-Host "  This may cause build failures. Install from:" -ForegroundColor Yellow
+    Write-Log "Visual C++ Build Tools not found" "ERROR"
+    Write-Host ""
+    Write-Host "Please install Visual Studio with C++ workload:" -ForegroundColor Yellow
+    Write-Host "  1. Download Visual Studio Installer" -ForegroundColor Cyan
+    Write-Host "  2. Select 'Desktop development with C++' workload" -ForegroundColor Cyan
+    Write-Host "  3. Ensure 'MSVC v143' and 'Windows SDK' are checked" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "Or install standalone Build Tools:" -ForegroundColor Yellow
     Write-Host "  https://visualstudio.microsoft.com/visual-cpp-build-tools/" -ForegroundColor Cyan
-    return $false
+    Write-Host ""
+    return $null
+}
+
+function Set-BazelEnvironment {
+    param($VcInfo)
+
+    if (-not $VcInfo) {
+        return $false
+    }
+
+    # Set BAZEL_VC environment variable for this session
+    $env:BAZEL_VC = $VcInfo.VcPath
+    Write-Log "Set BAZEL_VC=$($VcInfo.VcPath)"
+
+    # Try to find and set BAZEL_VC_FULL_VERSION
+    $toolsVersionDir = Join-Path $VcInfo.VcPath "Tools\MSVC"
+    if (Test-Path $toolsVersionDir) {
+        $versions = Get-ChildItem -Path $toolsVersionDir -Directory | Sort-Object Name -Descending
+        if ($versions.Count -gt 0) {
+            $latestVersion = $versions[0].Name
+            $env:BAZEL_VC_FULL_VERSION = $latestVersion
+            Write-Log "Set BAZEL_VC_FULL_VERSION=$latestVersion"
+        }
+    }
+
+    return $true
 }
 
 # Main script starts here
@@ -141,12 +204,31 @@ if (-not $bazelPath) {
     exit 1
 }
 
-# Check Visual Studio (optional warning)
-Test-VisualStudio | Out-Null
+# Find and configure Visual C++
+Write-Log "Checking for Visual C++..."
+$vcInfo = Find-VisualCpp
+
+if (-not $vcInfo) {
+    Write-Host ""
+    Write-Log "Build cannot continue without Visual C++." "ERROR"
+    Write-Host ""
+    Write-Host "Press any key to exit..." -ForegroundColor Gray
+    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+    exit 1
+}
+
+# Set Bazel environment variables
+Set-BazelEnvironment -VcInfo $vcInfo | Out-Null
 
 if ($CheckOnly) {
     Write-Host ""
     Write-Log "Prerequisites check complete." "OK"
+    Write-Host ""
+    Write-Host "Environment variables set for this session:" -ForegroundColor Gray
+    Write-Host "  BAZEL_VC = $env:BAZEL_VC" -ForegroundColor Gray
+    if ($env:BAZEL_VC_FULL_VERSION) {
+        Write-Host "  BAZEL_VC_FULL_VERSION = $env:BAZEL_VC_FULL_VERSION" -ForegroundColor Gray
+    }
     Write-Host ""
     exit 0
 }
@@ -203,8 +285,10 @@ try {
         Write-Host ""
         Write-Host "Common issues:" -ForegroundColor Yellow
         Write-Host "  - Missing Visual Studio Build Tools" -ForegroundColor Gray
-        Write-Host "  - BAZEL_VC not set correctly" -ForegroundColor Gray
-        Write-Host "  - Network issues downloading dependencies" -ForegroundColor Gray
+        Write-Host "  - C++ workload not installed in Visual Studio" -ForegroundColor Gray
+        Write-Host "  - Run: Visual Studio Installer > Modify > 'Desktop development with C++'" -ForegroundColor Gray
+        Write-Host ""
+        Write-Host "Current BAZEL_VC: $env:BAZEL_VC" -ForegroundColor Gray
         Write-Host ""
         Write-Host "Check docs/GETTING_STARTED.md for troubleshooting" -ForegroundColor Cyan
         exit 1

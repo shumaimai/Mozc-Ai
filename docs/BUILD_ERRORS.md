@@ -176,6 +176,74 @@ git checkout claude/ai-mozc-ime-integration-01UtNsKb2wmAp6dYJa6c8Hut
 
 ---
 
+### エラー #6: BazelがVisual C++を検出できない
+
+**発生日**: 2024年
+**症状**:
+```
+ERROR: vc_installation_error_x64.bat failed
+The target you are compiling requires Visual C++ build tools.
+Bazel couldn't find a valid Visual C++ build tools installation on your machine.
+```
+
+**原因**:
+BazelがVisual C++のインストールパスを見つけられない。以下のケースで発生:
+1. `BAZEL_VC`環境変数が設定されていない
+2. Visual Studioの「C++によるデスクトップ開発」ワークロードがインストールされていない
+3. Visual Studioのインストールパスが標準と異なる
+4. Bazelのキャッシュが古い
+
+**確認方法**:
+```powershell
+# Visual C++のパスを確認
+dir "C:\Program Files\Microsoft Visual Studio\2022\Community\VC"
+
+# vswhere で確認
+& "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64
+
+# 現在のBAZEL_VC設定を確認
+echo $env:BAZEL_VC
+```
+
+**修正方法**:
+
+方法1: ビルドスクリプトを使用（自動設定）
+```powershell
+# 最新のスクリプトを取得
+git pull
+
+# スクリプトが自動的にBAZEL_VCを設定
+.\scripts\build.ps1
+```
+
+方法2: 手動で環境変数を設定
+```powershell
+# 一時的に設定（現在のセッションのみ）
+$env:BAZEL_VC = "C:\Program Files\Microsoft Visual Studio\2022\Community\VC"
+
+# 永続的に設定
+[Environment]::SetEnvironmentVariable("BAZEL_VC", "C:\Program Files\Microsoft Visual Studio\2022\Community\VC", "User")
+```
+
+方法3: C++ワークロードをインストール
+```
+1. Visual Studio Installerを開く
+2. 「変更」をクリック
+3. 「C++によるデスクトップ開発」にチェック
+4. 「MSVC v143」と「Windows 10/11 SDK」がチェックされていることを確認
+5. 「変更」をクリックしてインストール
+```
+
+方法4: Bazelキャッシュをクリア
+```powershell
+bazelisk clean --expunge
+```
+
+**修正ファイル**:
+- `scripts/build.ps1`（BAZEL_VC自動検出機能を追加）
+
+---
+
 ## 修正履歴
 
 | 日付 | コミット | 内容 |
@@ -184,7 +252,8 @@ git checkout claude/ai-mozc-ime-integration-01UtNsKb2wmAp6dYJa6c8Hut
 | 2024 | 9d9b3db | fix #1, #2: std::filesystem依存を削除、インクルードパス修正 |
 | 2024 | b1d0f27 | fix #3: 日本語パス問題のドキュメント追加、PowerShellスクリプト改善 |
 | 2024 | f8b794e | fix #4: Bazel 8 (bzlmod) 対応 |
-| 2024 | (current) | fix #4 update: MODULE.bazelバージョン修正、エラー#5ドキュメント追加 |
+| 2024 | 368f2b1 | fix #4 update: MODULE.bazelバージョン修正、エラー#5ドキュメント追加 |
+| 2024 | (current) | fix #6: BAZEL_VC自動検出機能追加 |
 
 ---
 
