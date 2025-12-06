@@ -11,16 +11,17 @@ module(
 
 # ============================================================================
 # Core Dependencies
+# Note: Versions are aligned with Bazel Central Registry (BCR)
 # ============================================================================
 
 # Rules for C++ (required for cc_library, cc_binary, cc_test)
-bazel_dep(name = "rules_cc", version = "0.0.9")
+bazel_dep(name = "rules_cc", version = "0.1.1")
 
 # Platform definitions
-bazel_dep(name = "platforms", version = "0.0.10")
+bazel_dep(name = "platforms", version = "0.0.11")
 
 # Google Test for unit testing
-bazel_dep(name = "googletest", version = "1.14.0")
+bazel_dep(name = "googletest", version = "1.14.0.bcr.1")
 
 # ============================================================================
 # Optional Dependencies (for future use)
