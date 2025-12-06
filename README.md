@@ -236,6 +236,8 @@ bazelisk test --test_output=all //src/ai:all
 ## 関連ドキュメント
 
 - [詳細セットアップガイド（Getting Started）](docs/GETTING_STARTED.md)
+- [Mozc統合ガイド](docs/MOZC_INTEGRATION.md)
+- [ビルドエラー・修正記録](docs/BUILD_ERRORS.md)
 - [Mozc公式リポジトリ](https://github.com/google/mozc)
 - [Ollama公式サイト](https://ollama.ai)
 
