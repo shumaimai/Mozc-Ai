@@ -16,6 +16,10 @@
 #include <shlobj.h>
 #include <direct.h>
 #define MKDIR(path) _mkdir(path)
+// Undefine Windows macros that conflict with our code
+#undef ERROR
+#undef min
+#undef max
 #else
 #include <unistd.h>
 #include <pwd.h>

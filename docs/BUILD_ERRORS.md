@@ -322,6 +322,49 @@ COPTS = select({
 
 ---
 
+### エラー #9: Windows ERROR マクロの衝突
+
+**発生日**: 2024年
+**症状**:
+```
+error C2589: '定数': スコープ解決演算子 (::) の右側にあるトークンは使えません。
+src/ai/ai_logger.cc(165): error C2660: 'mozc::ai::AILogger::Log': 関数に 0 個の引数を指定できません。
+```
+
+**原因**:
+`<windows.h>`が`ERROR`をマクロとして定義している（`#define ERROR 0`）。
+これにより、コード内の`LogLevel::ERROR`が`LogLevel::0`として解釈され、コンパイルエラーになる。
+
+同様に、`min`/`max`マクロも`std::min`/`std::max`や`std::numeric_limits<T>::max()`と衝突する可能性がある。
+
+**修正内容**:
+`<windows.h>`をインクルードした後に、問題のあるマクロを`#undef`で解除:
+```cpp
+#ifdef _WIN32
+#include <windows.h>
+#include <shlobj.h>
+#include <direct.h>
+#define MKDIR(path) _mkdir(path)
+// Undefine Windows macros that conflict with our code
+#undef ERROR
+#undef min
+#undef max
+#else
+...
+#endif
+```
+
+**修正ファイル**:
+- `src/ai/ai_logger.cc`
+- `src/ai/ai_config.cc`
+
+**代替策**:
+1. `#define NOMINMAX` を `<windows.h>` の前に追加（min/max対策）
+2. `#define WIN32_LEAN_AND_MEAN` を追加（不要なヘッダーを除外）
+3. enum値を `LOG_ERROR` などに変更（非推奨）
+
+---
+
 ## 修正履歴
 
 | 日付 | コミット | 内容 |
@@ -333,7 +376,8 @@ COPTS = select({
 | 2024 | 368f2b1 | fix #4 update: MODULE.bazelバージョン修正、エラー#5ドキュメント追加 |
 | 2024 | 0d4bee4 | fix #6: BAZEL_VC自動検出機能追加 |
 | 2024 | a6519ae | fix #7: インクルードパスエラー（再発）修正 |
-| 2024 | (current) | fix #8: UTF-8エンコーディングエラー修正 |
+| 2024 | 9d36fa3 | fix #8: UTF-8エンコーディングエラー修正 |
+| 2024 | (current) | fix #9: Windows ERRORマクロ衝突修正 |
 
 ---
 
