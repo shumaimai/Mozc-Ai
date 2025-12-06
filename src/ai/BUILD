@@ -20,6 +20,18 @@ COPTS = select({
     ],
 })
 
+# Platform-specific linker options for Windows API
+# shell32.lib is required for SHGetFolderPathA (config/log directory)
+# ws2_32.lib and winhttp.lib are required for HTTP requests
+WINDOWS_LINKOPTS = select({
+    "@platforms//os:windows": [
+        "shell32.lib",
+        "ws2_32.lib",
+        "winhttp.lib",
+    ],
+    "//conditions:default": [],
+})
+
 # Proto library for AI configuration (disabled - requires rules_proto setup)
 # Uncomment these when integrating with Mozc's protobuf infrastructure
 # proto_library(
@@ -39,6 +51,7 @@ cc_library(
     hdrs = ["ai_config.h"],
     copts = COPTS,
     includes = ["."],
+    linkopts = WINDOWS_LINKOPTS,
     deps = [
         # ":ai_config_proto",  # Enable when using protobuf
     ],
@@ -51,6 +64,7 @@ cc_library(
     hdrs = ["ai_logger.h"],
     copts = COPTS,
     includes = ["."],
+    linkopts = WINDOWS_LINKOPTS,
     deps = [
         ":ai_config",
     ],
@@ -75,16 +89,10 @@ cc_library(
     hdrs = ["ai_backend.h"],
     copts = COPTS,
     includes = ["."],
+    linkopts = WINDOWS_LINKOPTS,
     deps = [
         ":ai_config",
     ],
-    linkopts = select({
-        "@platforms//os:windows": [
-            "-lws2_32",
-            "-lwinhttp",
-        ],
-        "//conditions:default": [],
-    }),
 )
 
 # AI Worker

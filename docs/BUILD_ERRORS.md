@@ -377,7 +377,57 @@ src/ai/ai_logger.cc(165): error C2660: 'mozc::ai::AILogger::Log': 関数に 0 �
 | 2024 | 0d4bee4 | fix #6: BAZEL_VC自動検出機能追加 |
 | 2024 | a6519ae | fix #7: インクルードパスエラー（再発）修正 |
 | 2024 | 9d36fa3 | fix #8: UTF-8エンコーディングエラー修正 |
-| 2024 | (current) | fix #9: Windows ERRORマクロ衝突修正 |
+| 2024 | da01541 | fix #9: Windows ERRORマクロ衝突修正 |
+| 2024 | (current) | fix #10: Windowsリンクオプションとshell32.lib追加 |
+
+---
+
+### エラー #10: Windowsリンクエラー（shell32.lib / リンカーオプション形式）
+
+**発生日**: 2024年
+**症状**:
+```
+LINK : warning LNK4044: オプション '/lws2_32' は認識されません。無視します。
+error LNK2019: 未解決の外部シンボル __imp_SHGetFolderPathA
+fatal error LNK1120: 1 件の未解決の外部参照
+```
+
+**原因**:
+1. リンカーオプションの形式がLinux形式（`-lws2_32`）になっていた
+2. `SHGetFolderPathA`（設定ファイル/ログディレクトリ取得）に必要な`shell32.lib`がリンクされていなかった
+
+Windowsでは、ライブラリを指定する形式が異なる：
+- Linux: `-lws2_32`（libプレフィックスなし）
+- Windows: `ws2_32.lib`（フルネーム）
+
+**修正内容**:
+1. `WINDOWS_LINKOPTS` 変数を追加し、正しいWindows形式でライブラリを指定
+2. `shell32.lib`を追加（`SHGetFolderPathA`用）
+3. `ai_config`、`ai_logger`、`ai_backend`の各ライブラリに`linkopts`を追加
+
+```python
+# 修正前
+linkopts = select({
+    "@platforms//os:windows": [
+        "-lws2_32",      # Linux形式（×）
+        "-lwinhttp",
+    ],
+    "//conditions:default": [],
+})
+
+# 修正後
+WINDOWS_LINKOPTS = select({
+    "@platforms//os:windows": [
+        "shell32.lib",   # SHGetFolderPathA用
+        "ws2_32.lib",    # Windows形式（○）
+        "winhttp.lib",
+    ],
+    "//conditions:default": [],
+})
+```
+
+**修正ファイル**:
+- `src/ai/BUILD`
 
 ---
 
