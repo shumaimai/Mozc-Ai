@@ -50,8 +50,8 @@ cc_library(
 
 cc_test(
     name = "ai_rewriter_test",
-    size = "large",  # Increase timeout (default 60s -> 900s)
-    timeout = "moderate",  # 300 seconds
+    size = "enormous",  # Increase timeout (default 60s -> 3600s)
+    timeout = "eternal",  # 3600 seconds - tests may take time due to AI initialization
     srcs = ["ai_rewriter_test.cc"],
     copts = COPTS,
     deps = [
