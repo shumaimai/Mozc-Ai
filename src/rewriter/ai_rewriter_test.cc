@@ -167,11 +167,14 @@ TEST_F(AIRewriterTest, MultipleSegments) {
 
   Segments segments;
 
+  // Add first segment
   Segment* seg1 = segments.add_segment();
   seg1->set_key("hello");
   Candidate* c1 = seg1->add_candidate();
   c1->value = "Hello";
 
+  // Add second segment
+  // NOTE: After this call, seg1 pointer may be invalidated due to vector reallocation
   Segment* seg2 = segments.add_segment();
   seg2->set_key("world");
   Candidate* c2 = seg2->add_candidate();
@@ -180,8 +183,10 @@ TEST_F(AIRewriterTest, MultipleSegments) {
   ConversionRequest request;
   EXPECT_TRUE(rewriter.Rewrite(request, &segments));
 
+  // Access segment through accessor to avoid stale pointer
   // First segment should be processed (candidate preserved)
-  EXPECT_GE(seg1->candidates_size(), 1);
+  EXPECT_GE(segments.conversion_segment(0).candidates_size(), 1);
+  EXPECT_EQ(segments.conversion_segment(0).candidate(0).value, "Hello");
 }
 
 // IsEnabled test

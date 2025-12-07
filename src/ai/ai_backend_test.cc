@@ -129,7 +129,7 @@ TEST(AIBackendTest, OllamaBackendConfigInfo) {
   EXPECT_FALSE(info.empty());
   EXPECT_NE(info.find("Ollama"), std::string::npos);
   EXPECT_NE(info.find("localhost"), std::string::npos);
-  EXPECT_NE(info.find("mistral"), std::string::npos);
+  EXPECT_NE(info.find("gemma3"), std::string::npos);
 }
 
 // Result structure test
