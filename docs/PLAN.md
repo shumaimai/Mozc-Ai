@@ -139,9 +139,19 @@ Phase 5       機能拡張・上流貢献
 
 ---
 
-### Phase 4: 実機検証・品質改善
+### Phase 4: 実機検証・配布準備
 
-**ゴール**: 実際の日本語入力で AI 候補が表示され、IME がフリーズしないことを確認する。
+**ゴール**: 実際の日本語入力で AI 候補が表示され、Windows MSI で配布できること。
+
+#### 4-0. Windows インストーラー ✅ スクリプト完成
+
+| 項目 | 状態 |
+|------|------|
+| `scripts/package_windows.ps1` | MSI ビルドパイプライン |
+| `scripts/integrate_mozc_installer.py` | WiX インストーラーへの AI 設定同梱 |
+| `installer/windows/` | デフォルト設定・セットアップスクリプト |
+| `docs/WINDOWS_INSTALLER.md` | ビルド・インストール手順 |
+| MSI 実ビルド検証 | Windows 環境で要確認 |
 
 #### 4-1. 実機テスト
 

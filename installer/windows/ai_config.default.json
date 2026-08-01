@@ -1,0 +1,16 @@
+{
+  "enabled": true,
+  "backend_type": "ollama",
+  "ollama_endpoint": "http://localhost:11434",
+  "ollama_model": "gemma3:1b",
+  "connect_timeout_ms": 50,
+  "request_timeout_ms": 500,
+  "max_wait_ms": 600,
+  "cache_ttl_seconds": 60,
+  "cache_max_entries": 100,
+  "history_size": 5,
+  "log_level": "info",
+  "log_ai_communication": false,
+  "disable_ai": false,
+  "use_mock": false
+}
