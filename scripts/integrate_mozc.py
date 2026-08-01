@@ -64,16 +64,42 @@ def patch_rewriter_build(ai_mozc_dir: Path, mozc_src: Path, dry_run: bool) -> No
 
     text = text.replace(marker, snippet + marker, 1)
 
-    deps_marker = '        ":a11y_description_rewriter",\n        ":calculator_rewriter",'
-    deps_replacement = (
+    rewriter_deps_marker = (
+        '    name = "rewriter",\n'
+        '    srcs = [\n'
+        '        "rewriter.cc",\n'
+        '    ],\n'
+        '    hdrs = ["rewriter.h"],\n'
+        '    visibility = [\n'
+        '        "//converter:__pkg__",\n'
+        '        "//engine:__pkg__",\n'
+        '    ],\n'
+        '    deps = [\n'
+        '        ":a11y_description_rewriter",\n'
+        '        ":calculator_rewriter",'
+    )
+    rewriter_deps_replacement = (
+        '    name = "rewriter",\n'
+        '    srcs = [\n'
+        '        "rewriter.cc",\n'
+        '    ],\n'
+        '    hdrs = ["rewriter.h"],\n'
+        '    visibility = [\n'
+        '        "//converter:__pkg__",\n'
+        '        "//engine:__pkg__",\n'
+        '    ],\n'
+        '    deps = [\n'
         '        ":a11y_description_rewriter",\n'
         '        ":ai_rewriter",\n'
         '        ":calculator_rewriter",'
     )
-    if '":ai_rewriter",' not in text:
-        if deps_marker not in text:
+    if rewriter_deps_marker not in text:
+        if '        ":ai_rewriter",\n        ":calculator_rewriter",' in text:
+            print("rewriter target already depends on ai_rewriter; skipping deps patch")
+        else:
             raise RuntimeError("Could not find rewriter deps insertion point")
-        text = text.replace(deps_marker, deps_replacement, 1)
+    else:
+        text = text.replace(rewriter_deps_marker, rewriter_deps_replacement, 1)
 
     print(f"patch {build_file}")
     if not dry_run:
