@@ -27,7 +27,7 @@ AI 統合済み Mozc の **Windows MSI インストーラー** (`MozcAI64.msi`) 
 
 ---
 
-## ワンコマンドで MSI を作る
+## ワンコマンドで MSI を作る（ローカル）
 
 ```powershell
 cd C:\path\to\ai_mozc
@@ -36,7 +36,28 @@ cd C:\path\to\ai_mozc
 
 成果物: `dist\MozcAI64.msi`
 
-### オプション
+> **ファイルが見つからない場合**: `scripts\package_windows.ps1` はメインブランチに含まれています。最新の `claude/ai-mozc-ime-integration-01UtNsKb2wmAp6dYJa6c8Hut` を pull してください。
+
+---
+
+## GitHub Release から MSI を入手（ビルド不要）
+
+リリースを作成すると、GitHub Actions が自動で `MozcAI64.msi` をビルドし、Release に添付します。
+
+### 手順
+
+1. GitHub の **Releases** → **Draft a new release**
+2. タグを作成（例: `v0.1.0`）
+3. **Publish release** をクリック
+4. 約 1〜2 時間後、Release ページに `MozcAI64.msi` が表示されます
+
+手動トリガー（開発者向け）:
+
+- **Actions** → **Windows Release** → **Run workflow**
+
+ローカルで Visual Studio や Bazel を入れなくても、Release から MSI をダウンロードしてインストールできます。
+
+---
 
 ```powershell
 # 既存の Mozc ソースを使う

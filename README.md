@@ -255,6 +255,7 @@ bazelisk test --test_output=all //src/ai:all
 | [ビルドガイド](docs/BUILD_GUIDE.md) | ★ビルド詳細、成果物の場所、ターゲット一覧 |
 | [テストガイド](docs/TESTING_GUIDE.md) | ★テスト実行、動作確認手順 |
 | [Mozc統合ガイド](docs/MOZC_INTEGRATION.md) | Mozcソースコードへの統合方法 |
+| [Windowsインストーラー](docs/WINDOWS_INSTALLER.md) | MSI (`MozcAI64.msi`) のビルド・配布手順 |
 | [エラー・修正記録](docs/BUILD_ERRORS.md) | 既知のエラーと解決策 |
 
 ### 外部リンク

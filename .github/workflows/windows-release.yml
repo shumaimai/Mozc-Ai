@@ -1,0 +1,97 @@
+name: Windows Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      mozc_ref:
+        description: Mozc git ref (branch/tag/commit)
+        required: false
+        default: master
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build_msi:
+    runs-on: windows-2025
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout AI Mozc
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Clone Mozc
+        shell: pwsh
+        run: |
+          $mozcRef = "${{ github.event.inputs.mozc_ref }}"
+          if ([string]::IsNullOrWhiteSpace($mozcRef)) { $mozcRef = "master" }
+          git clone --depth 1 --branch $mozcRef https://github.com/google/mozc.git .mozc-build/mozc
+          if ($LASTEXITCODE -ne 0) {
+            git clone https://github.com/google/mozc.git .mozc-build/mozc
+            Push-Location .mozc-build/mozc
+            git checkout $mozcRef
+            Pop-Location
+          }
+
+      - name: Integrate AI module
+        shell: pwsh
+        run: |
+          python scripts/integrate_mozc.py --mozc-dir .mozc-build/mozc/src
+          python scripts/integrate_mozc_installer.py --mozc-dir .mozc-build/mozc/src
+
+      - name: Cache Mozc third_party
+        uses: actions/cache@v4
+        with:
+          path: .mozc-build/mozc/src/third_party_cache
+          key: mozc-deps-${{ runner.os }}-${{ hashFiles('.mozc-build/mozc/src/build_tools/update_deps.py') }}
+
+      - name: Download Mozc dependencies
+        shell: cmd
+        working-directory: .mozc-build/mozc/src
+        run: python build_tools/update_deps.py
+
+      - name: Build Qt
+        shell: cmd
+        working-directory: .mozc-build/mozc/src
+        run: python build_tools/build_qt.py --release --confirm_license
+
+      - name: Delete Qt source to save disk space
+        shell: cmd
+        working-directory: .mozc-build/mozc/src
+        run: rmdir third_party\qt_src /s /q
+
+      - name: Build MozcAI64.msi
+        shell: cmd
+        working-directory: .mozc-build/mozc/src
+        env:
+          ANDROID_NDK_HOME: ""
+        run: bazelisk build package --config release_build
+
+      - name: Copy MSI to dist
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+          Copy-Item .mozc-build/mozc/src/bazel-bin/win32/installer/MozcAI64.msi dist/MozcAI64.msi
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MozcAI64.msi
+          path: dist/MozcAI64.msi
+          if-no-files-found: error
+
+      - name: Upload to GitHub Release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/MozcAI64.msi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
