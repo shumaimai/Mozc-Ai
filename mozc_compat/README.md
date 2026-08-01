@@ -1,57 +1,41 @@
 # Mozc Compatibility Layer
 
-このディレクトリには、google/mozc リポジトリに直接統合できるバージョンのファイルが含まれています。
+このディレクトリには、google/mozc リポジトリに直接統合するためのファイルが含まれています。
 
 ## ファイル一覧
 
 | ファイル | 説明 |
 |---------|------|
-| `ai_rewriter.h` | Mozc用インクルードパスに修正済みのヘッダー |
-| `ai_rewriter.cc` | Mozc APIに対応した実装ファイル |
+| `ai_rewriter.h` / `ai_rewriter.cc` | 本家 Mozc API 向け AIRewriter 実装 |
+| `ai_rewriter_test.cc` | Mozc 環境向けユニットテスト |
+| `ai/BUILD.bazel` | `mozc/src/ai/BUILD.bazel` 用ビルド定義 |
+| `rewriter_build.bazel.patch` | `rewriter/BUILD.bazel` 追記用スニペット |
 
-## 主な変更点
+## 統合方法（推奨）
 
-### 1. インクルードパス
+```bash
+git clone https://github.com/google/mozc.git
+python3 scripts/integrate_mozc.py --mozc-dir /path/to/mozc/src
 
-```cpp
-// スタンドアロン版 (src/rewriter/)
-#include "rewriter_interface.h"
-#include "../ai/ai_config.h"
-
-// Mozc統合版 (mozc_compat/)
-#include "rewriter/rewriter_interface.h"
-#include "ai/ai_config.h"
+cd /path/to/mozc/src
+bazelisk build //ai:all //rewriter:ai_rewriter //server:mozc_server
+bazelisk test //ai:all //rewriter:ai_rewriter_test
 ```
 
-### 2. Mozc API対応
+Windows:
 
-```cpp
-// スタンドアロン版
-segment.key                    // 直接アクセス
-segment.candidate(i).value     // 直接アクセス
-segment->add_candidate()       // 直接追加
-
-// Mozc統合版
-segment.key()                  // メソッド呼び出し
-segment.candidate(i).value()   // メソッド呼び出し
-segment->push_back_candidate() // Mozc API
+```powershell
+.\scripts\integrate_mozc.ps1 -MozcDir C:\mozc\src
 ```
 
-### 3. ロギング
+## スタンドアロン版との違い
 
-```cpp
-// スタンドアロン版
-#define AI_LOG(msg) std::cerr << "[AI-Mozc] " << msg << std::endl
-
-// Mozc統合版
-#include "base/logging.h"
-LOG(INFO) << "[AI-Mozc] " << msg;
-```
-
-## 使用方法
-
-1. これらのファイルを `mozc/src/rewriter/` にコピー
-2. AIモジュール (`src/ai/*`) を `mozc/src/ai/` にコピー
-3. `scripts/integrate_mozc.sh` または `scripts/integrate_mozc.ps1` を実行
+| 項目 | スタンドアロン (`src/rewriter/`) | 統合版 (`mozc_compat/`) |
+|------|----------------------------------|-------------------------|
+| インターフェース | モック `rewriter_interface.h` | 本家 `rewriter/rewriter_interface.h` |
+| 候補 API | `set_value()` 等 | `candidate.value` フィールド直接代入 |
+| リクエスト API | `request.request_type` | `request.request_type()` |
+| capability 戻り値 | `NONE` | `NOT_AVAILABLE` |
+| ビルド | `cc_library` | `mozc_cc_library` |
 
 詳細は `docs/MOZC_INTEGRATION.md` を参照してください。

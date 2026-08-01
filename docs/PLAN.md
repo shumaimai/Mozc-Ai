@@ -2,7 +2,18 @@
 
 **作成日**: 2026年8月1日  
 **前版**: `docs/PROGRESS_REPORT.md`（2025年12月7日）  
-**ステータス**: Phase 1–2 完了、Phase 3 着手準備中（統合スクリプトは未検証）
+**ステータス**: Phase 3 完了（本家Mozc統合・ビルド・テスト検証済み）、Phase 4 進行中
+
+---
+
+## Phase 3 完了記録（2026年8月1日）
+
+| 項目 | 結果 |
+|------|------|
+| `integrate_mozc.py` | 現行 Mozc（Bazel 9 / `BUILD.bazel`）向けに刷新 |
+| `mozc_compat/` | 本家 API 不整合を修正 |
+| 本家ビルド | `//server:mozc_server` 成功 |
+| 本家テスト | 5/5 PASS |
 
 ---
 

@@ -44,9 +44,6 @@ class AIRewriter : public RewriterInterface {
   // Clear state
   void Clear() override;
 
-  // Get rewriter name
-  std::string GetName() const override { return "AIRewriter"; }
-
   // Check if AI is enabled and ready
   bool IsEnabled() const;
 

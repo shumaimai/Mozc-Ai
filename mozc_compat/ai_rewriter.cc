@@ -4,13 +4,15 @@
 
 #include "rewriter/ai_rewriter.h"
 
-// Mozc-style includes (for integration with google/mozc)
-#include "ai/ai_config.h"
 #include "ai/ai_backend.h"
+#include "ai/ai_config.h"
 #include "ai/ai_logger.h"
+#include "converter/candidate.h"
+#include "converter/segments.h"
+#include "request/conversion_request.h"
 
-// Mozc logging (use Mozc's logging instead of cerr)
-#include "base/logging.h"
+#include "absl/log/log.h"
+#include "absl/strings/string_view.h"
 
 #include <algorithm>
 
@@ -26,11 +28,10 @@ AIRewriter::~AIRewriter() {
 }
 
 int AIRewriter::capability(const ConversionRequest& request) const {
-  // Only handle conversion requests
-  if (request.request_type == ConversionRequest::CONVERSION) {
+  if (request.request_type() == ConversionRequest::CONVERSION) {
     return RewriterInterface::CONVERSION;
   }
-  return RewriterInterface::NONE;
+  return RewriterInterface::NOT_AVAILABLE;
 }
 
 bool AIRewriter::Rewrite(const ConversionRequest& request,
@@ -197,7 +198,7 @@ std::string AIRewriter::GetInputKey(const Segments& segments) const {
   if (segments.conversion_segments_size() == 0) {
     return "";
   }
-  return segments.conversion_segment(0).key();
+  return std::string(segments.conversion_segment(0).key());
 }
 
 std::vector<std::string> AIRewriter::GetExistingCandidates(
@@ -268,10 +269,10 @@ void AIRewriter::InsertCandidates(
     }
 
     // Add candidate
-    Segment::Candidate* c = segment->push_back_candidate();
-    c->set_value(value);
-    c->set_content_value(value);
-    c->set_description("[AI]");  // Mark as AI-generated
+    converter::Candidate* c = segment->push_back_candidate();
+    c->value = value;
+    c->content_value = value;
+    c->description = "[AI]";
 
     ++added;
 
@@ -298,7 +299,7 @@ bool AIRewriter::IsDuplicate(
 
   const auto& segment = segments.conversion_segment(0);
   for (size_t i = 0; i < segment.candidates_size(); ++i) {
-    if (segment.candidate(i).value() == candidate) {
+    if (segment.candidate(i).value == candidate) {
       return true;
     }
   }
@@ -317,7 +318,7 @@ void AIRewriter::UpdateContext(const Segments& segments) const {
   }
 
   // Add top candidate to context history
-  std::string top_candidate = segment.candidate(0).value();
+  std::string top_candidate = segment.candidate(0).value;
 
   std::lock_guard<std::mutex> lock(context_mutex_);
   context_history_.push_back(top_candidate);

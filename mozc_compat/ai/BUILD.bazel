@@ -1,31 +1,23 @@
 # Copyright 2024 AI Mozc IME Project
 # AI Module BUILD file for Mozc integration
-#
-# Usage:
-#   1. Copy this file to mozc/src/ai/BUILD
-#   2. Ensure //bazel:stubs.bzl exists in Mozc source
-#   3. Run: bazelisk build //ai:all
 
-load("//bazel:stubs.bzl", "bzl_library", "cc_library_mozc", "cc_test_mozc")
+load(
+    "//:build_defs.bzl",
+    "mozc_cc_library",
+    "mozc_cc_test",
+)
 
 package(default_visibility = ["//visibility:public"])
 
-# ============================================================================
-# AI Configuration
-# ============================================================================
-
-cc_library_mozc(
+mozc_cc_library(
     name = "ai_config",
     srcs = ["ai_config.cc"],
     hdrs = ["ai_config.h"],
-    deps = [
-        "//base:logging",
-        "//base:port",
-    ],
 )
 
-cc_test_mozc(
+mozc_cc_test(
     name = "ai_config_test",
+    size = "small",
     srcs = ["ai_config_test.cc"],
     deps = [
         ":ai_config",
@@ -33,25 +25,16 @@ cc_test_mozc(
     ],
 )
 
-# ============================================================================
-# AI Logger
-# ============================================================================
-
-cc_library_mozc(
+mozc_cc_library(
     name = "ai_logger",
     srcs = ["ai_logger.cc"],
     hdrs = ["ai_logger.h"],
     deps = [
         ":ai_config",
-        "//base:logging",
     ],
 )
 
-# ============================================================================
-# AI Candidate Cache
-# ============================================================================
-
-cc_library_mozc(
+mozc_cc_library(
     name = "ai_candidate_cache",
     srcs = ["ai_candidate_cache.cc"],
     hdrs = ["ai_candidate_cache.h"],
@@ -60,8 +43,9 @@ cc_library_mozc(
     ],
 )
 
-cc_test_mozc(
+mozc_cc_test(
     name = "ai_candidate_cache_test",
+    size = "small",
     srcs = ["ai_candidate_cache_test.cc"],
     deps = [
         ":ai_candidate_cache",
@@ -69,11 +53,7 @@ cc_test_mozc(
     ],
 )
 
-# ============================================================================
-# AI Backend
-# ============================================================================
-
-cc_library_mozc(
+mozc_cc_library(
     name = "ai_backend",
     srcs = [
         "mock_backend.cc",
@@ -86,8 +66,9 @@ cc_library_mozc(
     ],
 )
 
-cc_test_mozc(
+mozc_cc_test(
     name = "ai_backend_test",
+    size = "small",
     srcs = ["ai_backend_test.cc"],
     deps = [
         ":ai_backend",
@@ -95,11 +76,7 @@ cc_test_mozc(
     ],
 )
 
-# ============================================================================
-# AI Worker
-# ============================================================================
-
-cc_library_mozc(
+mozc_cc_library(
     name = "ai_worker",
     srcs = ["ai_worker.cc"],
     hdrs = ["ai_worker.h"],
@@ -111,8 +88,9 @@ cc_library_mozc(
     ],
 )
 
-cc_test_mozc(
+mozc_cc_test(
     name = "ai_worker_test",
+    size = "medium",
     srcs = ["ai_worker_test.cc"],
     deps = [
         ":ai_worker",
@@ -120,11 +98,7 @@ cc_test_mozc(
     ],
 )
 
-# ============================================================================
-# Combined AI Module
-# ============================================================================
-
-cc_library_mozc(
+mozc_cc_library(
     name = "ai",
     deps = [
         ":ai_backend",
