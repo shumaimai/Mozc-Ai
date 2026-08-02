@@ -269,7 +269,7 @@ void AIRewriter::InsertCandidates(
     Candidate* c = segment->add_candidate();
     c->value = value;
     c->content_value = value;
-    c->description = "[AI]";  // Mark as AI-generated
+    c->description = kCandidateDescription;
 
     ++added;
 

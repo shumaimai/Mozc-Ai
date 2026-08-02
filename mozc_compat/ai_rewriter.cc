@@ -272,7 +272,8 @@ void AIRewriter::InsertCandidates(
     converter::Candidate* c = segment->push_back_candidate();
     c->value = value;
     c->content_value = value;
-    c->description = "[AI]";
+    c->description = kCandidateDescription;
+    c->category = converter::Candidate::OTHER;
 
     ++added;
 
