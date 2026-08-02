@@ -59,6 +59,8 @@ cd C:\path\to\ai_mozc
 
 ---
 
+### オプション（ローカルビルド）
+
 ```powershell
 # 既存の Mozc ソースを使う
 .\scripts\package_windows.ps1 -MozcDir C:\mozc\src

@@ -18,6 +18,14 @@ Mozc（Google日本語入力）にローカルAI（Ollama）を統合し、文�
 
 ## クイックスタート
 
+### Windows（推奨: Release からインストール）
+
+1. [GitHub Releases](https://github.com/shumaimai/Mozc-Ai/releases) から `MozcAI64.msi` をダウンロード
+2. MSI を実行してインストール
+3. [Ollama](https://ollama.ai) をインストールし `ollama pull gemma3:1b`
+
+### 開発者向け（ソースからビルド）
+
 ### 1. 前提条件をインストール
 
 **Windows:**

@@ -43,10 +43,10 @@ def copy_rewriter_files(ai_mozc_dir: Path, mozc_src: Path, dry_run: bool) -> Non
 
 def patch_rewriter_build(ai_mozc_dir: Path, mozc_src: Path, dry_run: bool) -> None:
     build_file = mozc_src / "rewriter" / "BUILD.bazel"
-    text = build_file.read_text()
+    text = build_file.read_text(encoding="utf-8")
 
     snippet_file = ai_mozc_dir / "mozc_compat" / "rewriter_build.bazel.patch"
-    snippet_lines = snippet_file.read_text().splitlines()
+    snippet_lines = snippet_file.read_text(encoding="utf-8").splitlines()
     start = next(i for i, line in enumerate(snippet_lines) if line.startswith("mozc_cc_library"))
     end = next(
         i for i, line in enumerate(snippet_lines)
@@ -103,12 +103,12 @@ def patch_rewriter_build(ai_mozc_dir: Path, mozc_src: Path, dry_run: bool) -> No
 
     print(f"patch {build_file}")
     if not dry_run:
-        build_file.write_text(text)
+        build_file.write_text(text, encoding="utf-8")
 
 
 def patch_rewriter_cc(mozc_src: Path, dry_run: bool) -> None:
     rewriter_cc = mozc_src / "rewriter" / "rewriter.cc"
-    text = rewriter_cc.read_text()
+    text = rewriter_cc.read_text(encoding="utf-8")
 
     if "MOZC_AI_REWRITER" in text:
         print("rewriter/rewriter.cc already patched; skipping")
@@ -159,7 +159,7 @@ def patch_rewriter_cc(mozc_src: Path, dry_run: bool) -> None:
 
     print(f"patch {rewriter_cc}")
     if not dry_run:
-        rewriter_cc.write_text(text)
+        rewriter_cc.write_text(text, encoding="utf-8")
 
 
 def main() -> int:

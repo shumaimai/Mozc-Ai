@@ -24,7 +24,7 @@ def copy_installer_assets(ai_mozc_dir: Path, mozc_src: Path, dry_run: bool) -> N
 
 def patch_data_installer_build(mozc_src: Path, dry_run: bool) -> None:
     build_file = mozc_src / "data" / "installer" / "BUILD.bazel"
-    text = build_file.read_text()
+    text = build_file.read_text(encoding="utf-8")
     marker = 'exports_files(["credits_en.html"])'
     replacement = (
         'exports_files([\n'
@@ -41,12 +41,12 @@ def patch_data_installer_build(mozc_src: Path, dry_run: bool) -> None:
     text = text.replace(marker, replacement, 1)
     print(f"patch {build_file}")
     if not dry_run:
-        build_file.write_text(text)
+        build_file.write_text(text, encoding="utf-8")
 
 
 def patch_installer_build(mozc_src: Path, dry_run: bool) -> None:
     build_file = mozc_src / "win32" / "installer" / "BUILD.bazel"
-    text = build_file.read_text()
+    text = build_file.read_text(encoding="utf-8")
 
     if "ai_config.default.json" in text and 'MozcAI64.msi' in text:
         print("win32/installer/BUILD.bazel already patched; skipping")
@@ -72,12 +72,12 @@ def patch_installer_build(mozc_src: Path, dry_run: bool) -> None:
 
     print(f"patch {build_file}")
     if not dry_run:
-        build_file.write_text(text)
+        build_file.write_text(text, encoding="utf-8")
 
 
 def patch_installer_wxs(mozc_src: Path, dry_run: bool) -> None:
     wxs_file = mozc_src / "win32" / "installer" / "installer_oss_64bit.wxs"
-    text = wxs_file.read_text()
+    text = wxs_file.read_text(encoding="utf-8")
 
     if 'Component Id="AIConfigDefault"' in text:
         print("installer_oss_64bit.wxs already patched; skipping")
@@ -134,7 +134,7 @@ def patch_installer_wxs(mozc_src: Path, dry_run: bool) -> None:
 
     print(f"patch {wxs_file}")
     if not dry_run:
-        wxs_file.write_text(text)
+        wxs_file.write_text(text, encoding="utf-8")
 
 
 def main() -> int:

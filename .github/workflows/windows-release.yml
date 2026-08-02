@@ -28,6 +28,12 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Set UTF-8 for Python
+        shell: pwsh
+        run: |
+          echo "PYTHONUTF8=1" >> $env:GITHUB_ENV
+          echo "PYTHONIOENCODING=utf-8" >> $env:GITHUB_ENV
+
       - name: Clone Mozc
         shell: pwsh
         run: |
@@ -92,6 +98,7 @@ jobs:
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.event.release.tag_name }}
           files: dist/MozcAI64.msi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
