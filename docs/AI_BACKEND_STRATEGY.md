@@ -6,7 +6,7 @@
 
 | 項目 | 内容 |
 |------|------|
-| デフォルト | Ollama + `gemma3:1b` |
+| デフォルト | Ollama + `gemma3:1b`（暫定。日本語品質向上は [JAPANESE_MODELS.md](./JAPANESE_MODELS.md) 参照） |
 | 実装済み | `ollama_backend`, `mock_backend` |
 | 予定のみ | Groq（`ai_config.proto` に定義） |
 
@@ -20,10 +20,14 @@ Ollama 上でモデルを差し替えるだけ。コード変更は設定のみ�
 
 | モデル | 特徴 | IME 向き |
 |--------|------|----------|
-| `gemma3:1b` | 軽量・高速（現デフォルト） | 応答速度 ◎、品質 △ |
-| `deepseek-r1:1.5b` | 推論寄り・日本語可 | 品質 ◎、やや重い |
-| `qwen2.5:0.5b` | 超軽量 | 速度 ◎、品質 △ |
-| `phi4-mini` | MS 製小型 | バランス型 |
+| `7shi/ezo-gemma-2-jpn:2b-instruct-q8_0` | Google 日本語版 Gemma 2 2B（**推奨・即試し**） | 日本語 ◎、速度 ○ |
+| `lucas2024/gemma-2-2b-jpn-it` | 同上（別 quant） | 日本語 ◎、速度 ○ |
+| `gemma3:1b` | 軽量・高速（現デフォルト） | 応答速度 ◎、日本語 △ |
+| `deepseek-r1:1.5b` | 推論寄り・日本語可 | 品質 ○、やや重い |
+| `qwen2.5:0.5b` | 超軽量 | **日本語 ✗（非推奨）** |
+| `phi4-mini` | MS 製小型 | バランス型（日本語は要検証） |
+
+詳細比較: [JAPANESE_MODELS.md](./JAPANESE_MODELS.md)
 
 ```json
 {
@@ -114,7 +118,7 @@ DeepSeek は OpenAI 互換 API を提供。新バックエンド `openai_compati
 
 | 項目 | 推奨 |
 |------|------|
-| ベースモデル | `Qwen2.5-0.5B` または `gemma3-1b` |
+| ベースモデル | **`pfnet/plamo-2-1b`** または `llm-jp/llm-jp-3.1-1.8b-instruct4`（Qwen 小型は日本語品質のため非推奨） |
 | 手法 | LoRA / QLoRA（GPU 1枚で可能） |
 | タスク | 入力+文脈 → 候補文字列を生成（seq2seq または JSON 出力） |
 | 出力 | GGUF → Ollama Modelfile で `ai-mozc-ime` として配布 |
@@ -139,9 +143,9 @@ DeepSeek は OpenAI 互換 API を提供。新バックエンド `openai_compati
 
 1. **ベンチマーク** 100〜500 入力パターンを手動で定義
 2. **データ生成** DeepSeek API で 5,000 件生成（オフライン）
-3. **LoRA 学習** Qwen2.5-0.5B を Colab / ローカル GPU で学習
+3. **LoRA 学習** PLaMo 2 1B または llm-jp-3.1-1.8b を Colab / ローカル GPU で学習
 4. **Ollama 化** GGUF エクスポート + Modelfile
-5. **比較** gemma3:1b / deepseek-r1:1.5b / 専用モデル でベンチマーク
+5. **比較** ezo-gemma-2-jpn / gemma3:1b / 専用モデル でベンチマーク
 
 ### D. IME 特化の小型モデル（ランキング型）— 別アプローチ
 
