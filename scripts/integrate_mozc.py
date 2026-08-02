@@ -110,52 +110,65 @@ def patch_rewriter_cc(mozc_src: Path, dry_run: bool) -> None:
     rewriter_cc = mozc_src / "rewriter" / "rewriter.cc"
     text = rewriter_cc.read_text(encoding="utf-8")
 
-    if "MOZC_AI_REWRITER" in text:
-        print("rewriter/rewriter.cc already patched; skipping")
-        return
+    if "MOZC_AI_REWRITER" not in text:
+        define_block = (
+            "#define MOZC_USER_HISTORY_REWRITER\n\n"
+            "#define MOZC_AI_REWRITER\n"
+        )
+        text = text.replace(
+            "#define MOZC_USER_HISTORY_REWRITER\n\n\n#ifdef MOZC_COMMAND_REWRITER",
+            define_block + "\n#ifdef MOZC_COMMAND_REWRITER",
+            1,
+        )
 
-    define_block = (
-        "#define MOZC_USER_HISTORY_REWRITER\n\n"
-        "#define MOZC_AI_REWRITER\n"
-    )
-    text = text.replace(
-        "#define MOZC_USER_HISTORY_REWRITER\n\n\n#ifdef MOZC_COMMAND_REWRITER",
-        define_block + "\n#ifdef MOZC_COMMAND_REWRITER",
-        1,
-    )
+        include_block = (
+            "#ifdef MOZC_USER_DICTIONARY_REWRITER\n"
+            "#include \"rewriter/user_dictionary_rewriter.h\"\n"
+            "#endif  // MOZC_USER_DICTIONARY_REWRITER\n\n"
+            "#ifdef MOZC_AI_REWRITER\n"
+            "#include \"rewriter/ai_rewriter.h\"\n"
+            "#endif  // MOZC_AI_REWRITER\n"
+        )
+        text = text.replace(
+            "#ifdef MOZC_USER_DICTIONARY_REWRITER\n"
+            "#include \"rewriter/user_dictionary_rewriter.h\"\n"
+            "#endif  // MOZC_USER_DICTIONARY_REWRITER\n\n"
+            "#ifdef MOZC_USER_HISTORY_REWRITER",
+            include_block + "\n#ifdef MOZC_USER_HISTORY_REWRITER",
+            1,
+        )
 
-    include_block = (
-        "#ifdef MOZC_USER_DICTIONARY_REWRITER\n"
-        "#include \"rewriter/user_dictionary_rewriter.h\"\n"
-        "#endif  // MOZC_USER_DICTIONARY_REWRITER\n\n"
-        "#ifdef MOZC_AI_REWRITER\n"
-        "#include \"rewriter/ai_rewriter.h\"\n"
-        "#endif  // MOZC_AI_REWRITER\n"
-    )
-    text = text.replace(
-        "#ifdef MOZC_USER_DICTIONARY_REWRITER\n"
-        "#include \"rewriter/user_dictionary_rewriter.h\"\n"
-        "#endif  // MOZC_USER_DICTIONARY_REWRITER\n\n"
-        "#ifdef MOZC_USER_HISTORY_REWRITER",
-        include_block + "\n#ifdef MOZC_USER_HISTORY_REWRITER",
-        1,
-    )
-
-    add_block = (
-        "  AddRewriter(make_unique_from_tuples<CorrectionRewriter>(\n"
-        "      modules, data_manager.GetReadingCorrectionData()));\n"
+    # Run AI rewriter last so later rewriters do not overwrite description.
+    old_middle_block = (
         "#ifdef MOZC_AI_REWRITER\n"
         "  AddRewriter(std::make_unique<AIRewriter>());\n"
         "#endif  // MOZC_AI_REWRITER\n"
         "  AddRewriter(std::make_unique<T13nPromotionRewriter>());"
     )
-    text = text.replace(
-        "  AddRewriter(make_unique_from_tuples<CorrectionRewriter>(\n"
-        "      modules, data_manager.GetReadingCorrectionData()));\n"
-        "  AddRewriter(std::make_unique<T13nPromotionRewriter>());",
-        add_block,
-        1,
+    if old_middle_block in text:
+        text = text.replace(
+            old_middle_block,
+            "  AddRewriter(std::make_unique<T13nPromotionRewriter>());",
+            1,
+        )
+
+    end_marker = (
+        "  AddRewriter(make_unique_from_tuples<A11yDescriptionRewriter>(\n"
+        "      data_manager.GetA11yDescriptionRewriterData()));\n"
+        "}"
     )
+    end_replacement = (
+        "  AddRewriter(make_unique_from_tuples<A11yDescriptionRewriter>(\n"
+        "      data_manager.GetA11yDescriptionRewriterData()));\n"
+        "#ifdef MOZC_AI_REWRITER\n"
+        "  AddRewriter(std::make_unique<AIRewriter>());\n"
+        "#endif  // MOZC_AI_REWRITER\n"
+        "}"
+    )
+    if end_marker in text and "AddRewriter(std::make_unique<AIRewriter>())" not in text:
+        text = text.replace(end_marker, end_replacement, 1)
+    elif "MOZC_AI_REWRITER" not in text:
+        raise RuntimeError("Could not find rewriter.cc insertion point for AIRewriter")
 
     print(f"patch {rewriter_cc}")
     if not dry_run:

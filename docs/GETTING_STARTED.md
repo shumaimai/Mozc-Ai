@@ -259,9 +259,10 @@ bazelisk test //src/ai:all //src/rewriter:all
 ```json
 {
   "enabled": true,
-  "backend_type": "ollama",
-  "ollama_endpoint": "http://localhost:11434",
-  "ollama_model": "gemma3:1b",
+  "backend_type": "deepseek",
+  "api_endpoint": "https://api.deepseek.com/v1",
+  "api_model": "deepseek-chat",
+  "api_key_env": "DEEPSEEK_API_KEY",
   "connect_timeout_ms": 50,
   "request_timeout_ms": 500,
   "max_wait_ms": 600,
@@ -278,12 +279,19 @@ bazelisk test //src/ai:all //src/rewriter:all
 }
 ```
 
+**DeepSeek API を使う場合**: 環境変数 `DEEPSEEK_API_KEY` に API キーを設定してください（ユーザー環境変数推奨）。設定後 `mozc_server` を再起動します。
+
+Ollama を使う場合は `backend_type` を `"ollama"` に変更し、`ollama_endpoint` / `ollama_model` を指定します。
+
 ### 設定項目の説明
 
 | 項目 | 説明 | デフォルト |
 |------|------|------------|
 | `enabled` | AI機能の有効/無効 | `true` |
-| `backend_type` | バックエンド種類 (`ollama`, `groq`, `disabled`) | `ollama` |
+| `backend_type` | バックエンド種類 (`deepseek`, `ollama`, `groq`, `disabled`) | `deepseek` |
+| `api_endpoint` | OpenAI 互換 API のベース URL | `https://api.deepseek.com/v1` |
+| `api_model` | API モデル名 | `deepseek-chat` |
+| `api_key_env` | API キーを読む環境変数名 | `DEEPSEEK_API_KEY` |
 | `ollama_endpoint` | OllamaサーバーのURL | `http://localhost:11434` |
 | `ollama_model` | 使用するモデル名 | `gemma3:1b` |
 | `connect_timeout_ms` | 接続タイムアウト（ms） | `50` |

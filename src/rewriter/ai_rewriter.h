@@ -110,6 +110,7 @@ class AIRewriter : public RewriterInterface {
   static constexpr int kMaxInitFailures = 3;
   static constexpr int kMaxContextHistory = 5;
   static constexpr int kMaxCandidatesToAdd = 3;
+  static constexpr const char* kCandidateDescription = "AIが生成";
 };
 
 }  // namespace mozc

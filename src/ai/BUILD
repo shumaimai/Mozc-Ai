@@ -84,6 +84,7 @@ cc_library(
     name = "ai_backend",
     srcs = [
         "ollama_backend.cc",
+        "openai_compatible_backend.cc",
         "mock_backend.cc",
     ],
     hdrs = ["ai_backend.h"],

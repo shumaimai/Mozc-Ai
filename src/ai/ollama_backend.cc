@@ -531,6 +531,8 @@ std::unique_ptr<AIBackendInterface> CreateBackend(const AIConfig& config) {
       return CreateOllamaBackend(config.ollama);
     case BackendType::GROQ:
       return CreateGroqBackend(config.groq);
+    case BackendType::OPENAI_COMPATIBLE:
+      return CreateOpenAICompatibleBackend(config.openai_compatible);
     case BackendType::DISABLED:
     default:
       return nullptr;

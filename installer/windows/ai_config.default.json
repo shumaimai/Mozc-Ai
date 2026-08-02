@@ -1,6 +1,9 @@
 {
   "enabled": true,
-  "backend_type": "ollama",
+  "backend_type": "deepseek",
+  "api_endpoint": "https://api.deepseek.com/v1",
+  "api_model": "deepseek-chat",
+  "api_key_env": "DEEPSEEK_API_KEY",
   "ollama_endpoint": "http://localhost:11434",
   "ollama_model": "gemma3:1b",
   "connect_timeout_ms": 50,

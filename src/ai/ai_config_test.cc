@@ -15,11 +15,16 @@ TEST(AIConfigTest, DefaultConfig) {
 
   // Check default values
   EXPECT_TRUE(config.enabled);
-  EXPECT_EQ(config.backend_type, BackendType::OLLAMA);
+  EXPECT_EQ(config.backend_type, BackendType::OPENAI_COMPATIBLE);
 
   // Ollama defaults
   EXPECT_EQ(config.ollama.endpoint, "http://localhost:11434");
   EXPECT_EQ(config.ollama.model, "gemma3:1b");
+
+  // OpenAI-compatible defaults (DeepSeek)
+  EXPECT_EQ(config.openai_compatible.endpoint, "https://api.deepseek.com/v1");
+  EXPECT_EQ(config.openai_compatible.model, "deepseek-chat");
+  EXPECT_EQ(config.openai_compatible.api_key_env, "DEEPSEEK_API_KEY");
 
   // Timeout defaults (critical for freeze prevention)
   EXPECT_EQ(config.timeout.connect_timeout_ms, 50);
@@ -106,6 +111,7 @@ TEST(AIConfigTest, BackendTypes) {
   EXPECT_EQ(static_cast<int>(BackendType::DISABLED), 0);
   EXPECT_EQ(static_cast<int>(BackendType::OLLAMA), 1);
   EXPECT_EQ(static_cast<int>(BackendType::GROQ), 2);
+  EXPECT_EQ(static_cast<int>(BackendType::OPENAI_COMPATIBLE), 3);
 }
 
 // Log level enumeration test

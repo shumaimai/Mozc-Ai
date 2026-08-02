@@ -9,10 +9,20 @@
 
 #include <algorithm>
 #include <iostream>
+#include <mutex>
 
 #define AI_LOG(msg) std::cerr << "[AI-Mozc Rewriter] " << msg << std::endl
 
 namespace mozc {
+
+namespace {
+void LogRewriterOnce() {
+  static std::once_flag once;
+  std::call_once(once, []() {
+    ai::AILogger::Info("AIRewriter active");
+  });
+}
+}  // namespace
 
 AIRewriter::AIRewriter() = default;
 
@@ -39,6 +49,8 @@ bool AIRewriter::Rewrite(const ConversionRequest& request,
   // ║ - No network calls                                                 ║
   // ║ - No waiting for AI response                                       ║
   // ╚════════════════════════════════════════════════════════════════════╝
+
+  LogRewriterOnce();
 
   // Update statistics
   {
@@ -269,7 +281,7 @@ void AIRewriter::InsertCandidates(
     Candidate* c = segment->add_candidate();
     c->value = value;
     c->content_value = value;
-    c->description = "[AI]";  // Mark as AI-generated
+    c->description = kCandidateDescription;
 
     ++added;
 

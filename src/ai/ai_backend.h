@@ -62,6 +62,10 @@ std::unique_ptr<AIBackendInterface> CreateOllamaBackend(const OllamaConfig& conf
 // Create Groq backend (placeholder for future implementation)
 std::unique_ptr<AIBackendInterface> CreateGroqBackend(const GroqConfig& config);
 
+// Create OpenAI-compatible backend (DeepSeek, Groq API, OpenAI, etc.)
+std::unique_ptr<AIBackendInterface> CreateOpenAICompatibleBackend(
+    const OpenAICompatibleConfig& config);
+
 // Create Mock backend for testing
 std::unique_ptr<AIBackendInterface> CreateMockBackend();
 

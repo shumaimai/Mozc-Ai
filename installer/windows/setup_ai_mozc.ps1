@@ -2,7 +2,7 @@
 # Seeds user config from the installed default template.
 
 param(
-    [string]$InstallDir = "$env:ProgramFiles\Mozc",
+    [string]$InstallDir = "",
     [switch]$PullModel,
     [switch]$Quiet
 )
@@ -16,14 +16,40 @@ function Write-SetupLog {
     }
 }
 
-$ConfigDir = Join-Path $env:LOCALAPPDATA "Google\Mozc"
-$UserConfig = Join-Path $ConfigDir "ai_config.json"
-$DefaultConfig = Join-Path $InstallDir "ai_config.default.json"
+function Find-AIAssetPath {
+    param(
+        [string]$FileName,
+        [string]$PreferredRoot = ""
+    )
 
-if (-not (Test-Path $DefaultConfig)) {
-    Write-SetupLog "Default config not found: $DefaultConfig"
+    $roots = @()
+    if ($PreferredRoot) { $roots += $PreferredRoot }
+    if ($env:ProgramFiles) { $roots += (Join-Path $env:ProgramFiles "Mozc") }
+    if (${env:ProgramFiles(x86)}) { $roots += (Join-Path ${env:ProgramFiles(x86)} "Mozc") }
+
+    foreach ($root in ($roots | Select-Object -Unique)) {
+        foreach ($subdir in @("", "documents")) {
+            $dir = if ($subdir) { Join-Path $root $subdir } else { $root }
+            $path = Join-Path $dir $FileName
+            if (Test-Path $path) {
+                return $path
+            }
+        }
+    }
+    return $null
+}
+
+$DefaultConfig = Find-AIAssetPath -FileName "ai_config.default.json" -PreferredRoot $InstallDir
+
+if (-not $DefaultConfig) {
+    Write-SetupLog "Default config not found (checked Mozc root and Mozc\documents)"
     exit 0
 }
+
+Write-SetupLog "Using default config: $DefaultConfig"
+
+$ConfigDir = Join-Path $env:LOCALAPPDATA "Google\Mozc"
+$UserConfig = Join-Path $ConfigDir "ai_config.json"
 
 if (-not (Test-Path $ConfigDir)) {
     New-Item -ItemType Directory -Path $ConfigDir -Force | Out-Null
@@ -36,6 +62,8 @@ if (-not (Test-Path $UserConfig)) {
 } else {
     Write-SetupLog "User config already exists, leaving unchanged: $UserConfig"
 }
+
+Write-SetupLog "User config path (used by mozc_server): $UserConfig"
 
 if ($PullModel) {
     $ollama = Get-Command ollama -ErrorAction SilentlyContinue

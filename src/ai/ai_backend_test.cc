@@ -5,6 +5,8 @@
 
 #include "gtest/gtest.h"
 
+#include <cstdlib>
+
 namespace mozc {
 namespace ai {
 namespace {
@@ -98,6 +100,15 @@ TEST(AIBackendTest, CreateBackendFactory) {
     EXPECT_EQ(backend->Name(), "Groq");
   }
 
+  // OpenAI-compatible (DeepSeek)
+  {
+    AIConfig config;
+    config.backend_type = BackendType::OPENAI_COMPATIBLE;
+    auto backend = CreateBackend(config);
+    ASSERT_NE(backend, nullptr);
+    EXPECT_EQ(backend->Name(), "OpenAI-Compatible");
+  }
+
   // Disabled
   {
     AIConfig config;
@@ -105,6 +116,40 @@ TEST(AIBackendTest, CreateBackendFactory) {
     auto backend = CreateBackend(config);
     EXPECT_EQ(backend, nullptr);
   }
+}
+
+// OpenAI-compatible backend creation test
+TEST(AIBackendTest, CreateOpenAICompatibleBackend) {
+  OpenAICompatibleConfig config;
+  config.endpoint = "https://api.deepseek.com/v1";
+  config.model = "deepseek-chat";
+  config.api_key_env = "DEEPSEEK_API_KEY";
+
+  auto backend = CreateOpenAICompatibleBackend(config);
+
+  ASSERT_NE(backend, nullptr);
+  EXPECT_EQ(backend->Name(), "OpenAI-Compatible");
+}
+
+// OpenAI-compatible backend requires API key for initialization
+TEST(AIBackendTest, OpenAICompatibleBackendInitialize) {
+  OpenAICompatibleConfig config;
+  config.api_key_env = "DEEPSEEK_API_KEY_TEST";
+
+  auto backend = CreateOpenAICompatibleBackend(config);
+  ASSERT_NE(backend, nullptr);
+
+#ifdef _WIN32
+  _putenv_s("DEEPSEEK_API_KEY_TEST", "test-key");
+#else
+  setenv("DEEPSEEK_API_KEY_TEST", "test-key", 1);
+#endif
+  EXPECT_TRUE(backend->Initialize());
+  EXPECT_TRUE(backend->IsReady());
+
+  std::string info = backend->GetConfigInfo();
+  EXPECT_NE(info.find("OpenAI"), std::string::npos);
+  EXPECT_NE(info.find("deepseek-chat"), std::string::npos);
 }
 
 // Mock backend config info
