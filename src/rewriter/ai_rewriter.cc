@@ -50,6 +50,8 @@ bool AIRewriter::Rewrite(const ConversionRequest& request,
   // ║ - No waiting for AI response                                       ║
   // ╚════════════════════════════════════════════════════════════════════╝
 
+  LogRewriterOnce();
+
   // Update statistics
   {
     std::lock_guard<std::mutex> lock(stats_mutex_);

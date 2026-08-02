@@ -139,13 +139,18 @@ class SimpleJsonParser {
     config.enabled = GetBool(json, "enabled", true);
 
     // Parse backend_type
-    std::string backend = GetString(json, "backend_type", "ollama");
+    std::string backend = GetString(json, "backend_type", "deepseek");
     if (backend == "disabled") {
       config.backend_type = BackendType::DISABLED;
     } else if (backend == "groq") {
       config.backend_type = BackendType::GROQ;
-    } else {
+    } else if (backend == "ollama") {
       config.backend_type = BackendType::OLLAMA;
+    } else if (backend == "deepseek" || backend == "openai_compatible" ||
+               backend == "openai") {
+      config.backend_type = BackendType::OPENAI_COMPATIBLE;
+    } else {
+      config.backend_type = BackendType::OPENAI_COMPATIBLE;
     }
 
     // Parse ollama config
@@ -156,6 +161,13 @@ class SimpleJsonParser {
     // Parse groq config
     config.groq.api_key_env = GetString(json, "groq_api_key_env", "GROQ_API_KEY");
     config.groq.model = GetString(json, "groq_model", "mixtral-8x7b-32768");
+
+    // Parse OpenAI-compatible config (DeepSeek, etc.)
+    config.openai_compatible.endpoint = GetString(
+        json, "api_endpoint", "https://api.deepseek.com/v1");
+    config.openai_compatible.model = GetString(json, "api_model", "deepseek-chat");
+    config.openai_compatible.api_key_env = GetString(
+        json, "api_key_env", "DEEPSEEK_API_KEY");
 
     // Parse timeout config
     config.timeout.connect_timeout_ms = GetInt(json, "connect_timeout_ms", 50);
@@ -195,9 +207,13 @@ class SimpleJsonParser {
     oss << "{\n";
     oss << "  \"enabled\": " << (config.enabled ? "true" : "false") << ",\n";
 
-    std::string backend_str = "ollama";
+    std::string backend_str = "deepseek";
     if (config.backend_type == BackendType::DISABLED) backend_str = "disabled";
     else if (config.backend_type == BackendType::GROQ) backend_str = "groq";
+    else if (config.backend_type == BackendType::OLLAMA) backend_str = "ollama";
+    else if (config.backend_type == BackendType::OPENAI_COMPATIBLE) {
+      backend_str = "deepseek";
+    }
     oss << "  \"backend_type\": \"" << backend_str << "\",\n";
 
     oss << "  \"ollama_endpoint\": \"" << config.ollama.endpoint << "\",\n";
@@ -205,6 +221,10 @@ class SimpleJsonParser {
 
     oss << "  \"groq_api_key_env\": \"" << config.groq.api_key_env << "\",\n";
     oss << "  \"groq_model\": \"" << config.groq.model << "\",\n";
+
+    oss << "  \"api_endpoint\": \"" << config.openai_compatible.endpoint << "\",\n";
+    oss << "  \"api_model\": \"" << config.openai_compatible.model << "\",\n";
+    oss << "  \"api_key_env\": \"" << config.openai_compatible.api_key_env << "\",\n";
 
     oss << "  \"connect_timeout_ms\": " << config.timeout.connect_timeout_ms << ",\n";
     oss << "  \"request_timeout_ms\": " << config.timeout.request_timeout_ms << ",\n";
@@ -322,11 +342,16 @@ AIConfigManager::AIConfigManager() {
 AIConfig AIConfigManager::GetDefaultConfig() {
   AIConfig config;
   config.enabled = true;
-  config.backend_type = BackendType::OLLAMA;
+  config.backend_type = BackendType::OPENAI_COMPATIBLE;
 
   // Ollama defaults
   config.ollama.endpoint = "http://localhost:11434";
   config.ollama.model = "gemma3:1b";
+
+  // OpenAI-compatible defaults (DeepSeek)
+  config.openai_compatible.endpoint = "https://api.deepseek.com/v1";
+  config.openai_compatible.model = "deepseek-chat";
+  config.openai_compatible.api_key_env = "DEEPSEEK_API_KEY";
 
   // Timeout defaults (Critical for freeze prevention)
   config.timeout.connect_timeout_ms = 50;    // 50ms - very short

@@ -58,6 +58,7 @@ mozc_cc_library(
     srcs = [
         "mock_backend.cc",
         "ollama_backend.cc",
+        "openai_compatible_backend.cc",
     ],
     hdrs = ["ai_backend.h"],
     deps = [

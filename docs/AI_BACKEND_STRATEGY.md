@@ -6,9 +6,9 @@
 
 | 項目 | 内容 |
 |------|------|
-| デフォルト | Ollama + `gemma3:1b`（暫定。日本語品質向上は [JAPANESE_MODELS.md](./JAPANESE_MODELS.md) 参照） |
-| 実装済み | `ollama_backend`, `mock_backend` |
-| 予定のみ | Groq（`ai_config.proto` に定義） |
+| デフォルト | DeepSeek API（`deepseek-chat`）— Ollama 不安定時の推奨 |
+| 実装済み | `openai_compatible_backend`（DeepSeek 等）, `ollama_backend`, `mock_backend` |
+| 予定のみ | Groq 専用バックエンド（OpenAI 互換 API で代替可） |
 
 ## 「自前 AI を作る」とは何を指すか
 
@@ -38,7 +38,7 @@ Ollama 上でモデルを差し替えるだけ。コード変更は設定のみ�
 **メリット**: プライバシー、オフライン、MSI に同梱不要  
 **デメリット**: ユーザーが Ollama + モデル DL が必要
 
-### B. DeepSeek API（クラウド）— 次の実装候補
+### B. DeepSeek API（クラウド）— **実装済み（v0.0.3）**
 
 DeepSeek は OpenAI 互換 API を提供。新バックエンド `openai_compatible_backend` 1本で以下をまとめて対応可能:
 

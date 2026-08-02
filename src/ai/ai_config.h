@@ -18,7 +18,8 @@ namespace ai {
 enum class BackendType {
   DISABLED = 0,
   OLLAMA = 1,
-  GROQ = 2
+  GROQ = 2,
+  OPENAI_COMPATIBLE = 3
 };
 
 // Log level enumeration
@@ -40,6 +41,13 @@ struct OllamaConfig {
 struct GroqConfig {
   std::string api_key_env = "GROQ_API_KEY";
   std::string model = "mixtral-8x7b-32768";
+};
+
+// OpenAI-compatible API configuration (DeepSeek, Groq, OpenAI, LM Studio, etc.)
+struct OpenAICompatibleConfig {
+  std::string endpoint = "https://api.deepseek.com/v1";
+  std::string model = "deepseek-chat";
+  std::string api_key_env = "DEEPSEEK_API_KEY";
 };
 
 // Timeout configuration (Critical for freeze prevention)
@@ -78,9 +86,10 @@ struct DebugConfig {
 // Main AI configuration structure
 struct AIConfig {
   bool enabled = true;
-  BackendType backend_type = BackendType::OLLAMA;
+  BackendType backend_type = BackendType::OPENAI_COMPATIBLE;
   OllamaConfig ollama;
   GroqConfig groq;
+  OpenAICompatibleConfig openai_compatible;
   TimeoutConfig timeout;
   CacheConfig cache;
   ContextConfig context;
