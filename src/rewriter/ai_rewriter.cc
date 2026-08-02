@@ -9,10 +9,20 @@
 
 #include <algorithm>
 #include <iostream>
+#include <mutex>
 
 #define AI_LOG(msg) std::cerr << "[AI-Mozc Rewriter] " << msg << std::endl
 
 namespace mozc {
+
+namespace {
+void LogRewriterOnce() {
+  static std::once_flag once;
+  std::call_once(once, []() {
+    ai::AILogger::Info("AIRewriter active");
+  });
+}
+}  // namespace
 
 AIRewriter::AIRewriter() = default;
 

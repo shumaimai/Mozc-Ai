@@ -15,8 +15,18 @@
 #include "absl/strings/string_view.h"
 
 #include <algorithm>
+#include <mutex>
 
 namespace mozc {
+
+namespace {
+void LogRewriterOnce() {
+  static std::once_flag once;
+  std::call_once(once, []() {
+    ai::AILogger::Info("AIRewriter active");
+  });
+}
+}  // namespace
 
 AIRewriter::AIRewriter() = default;
 
@@ -42,6 +52,8 @@ bool AIRewriter::Rewrite(const ConversionRequest& request,
   // ║ - No network calls                                                 ║
   // ║ - No waiting for AI response                                       ║
   // ╚════════════════════════════════════════════════════════════════════╝
+
+  LogRewriterOnce();
 
   // Update statistics
   {
