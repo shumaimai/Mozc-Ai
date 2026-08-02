@@ -152,10 +152,13 @@ ollama serve
 
 1. Ollama 起動確認: `curl http://localhost:11434/api/tags`
 2. 設定確認: `%LOCALAPPDATA%\Google\Mozc\ai_config.json`
+   - **注意**: 設定は `Program Files\Mozc` では読まれません。必ず `%LOCALAPPDATA%\Google\Mozc\` です。
+   - テンプレートは `C:\Program Files\Mozc\documents\ai_config.default.json`（x86 の場合は `Program Files (x86)\Mozc\documents\`）にあります。
 3. 手動で設定初期化:
 
    ```powershell
-   powershell -File "C:\Program Files\Mozc\setup_ai_mozc.ps1" -PullModel
+   # documents フォルダ内のスクリプトを実行（64/86 自動検出）
+   powershell -ExecutionPolicy Bypass -File "C:\Program Files (x86)\Mozc\documents\setup_ai_mozc.ps1"
    ```
 
 ---

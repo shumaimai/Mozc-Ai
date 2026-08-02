@@ -124,10 +124,10 @@ def patch_installer_wxs(mozc_src: Path, dry_run: bool) -> None:
     custom_action_replacement = custom_action_marker + """
     <CustomAction Id="SeedAIConfig"
                   Directory="MozcDir"
-                  ExeCommand="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;[MozcDir]setup_ai_mozc.ps1&quot; -Quiet"
+                  ExeCommand="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;[MozcDir]documents\setup_ai_mozc.ps1&quot; -Quiet"
                   Execute="deferred"
                   Impersonate="yes"
-                  Return="ignore" />"""
+                  Return="check" />"""
     if custom_action_marker not in text:
         raise RuntimeError("Could not find custom action marker")
     text = text.replace(custom_action_marker, custom_action_replacement, 1)

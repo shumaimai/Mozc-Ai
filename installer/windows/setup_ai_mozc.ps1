@@ -16,53 +16,40 @@ function Write-SetupLog {
     }
 }
 
-function Resolve-MozcInstallDir {
-    param([string]$Preferred)
+function Find-AIAssetPath {
+    param(
+        [string]$FileName,
+        [string]$PreferredRoot = ""
+    )
 
-    $candidates = @()
-    if ($Preferred) {
-        $candidates += $Preferred
-    }
-    if ($env:ProgramFiles) {
-        $candidates += (Join-Path $env:ProgramFiles "Mozc")
-    }
-    if (${env:ProgramFiles(x86)}) {
-        $candidates += (Join-Path ${env:ProgramFiles(x86)} "Mozc")
-    }
+    $roots = @()
+    if ($PreferredRoot) { $roots += $PreferredRoot }
+    if ($env:ProgramFiles) { $roots += (Join-Path $env:ProgramFiles "Mozc") }
+    if (${env:ProgramFiles(x86)}) { $roots += (Join-Path ${env:ProgramFiles(x86)} "Mozc") }
 
-    foreach ($dir in ($candidates | Select-Object -Unique)) {
-        $defaultConfig = Join-Path $dir "ai_config.default.json"
-        if (Test-Path $defaultConfig) {
-            return $dir
+    foreach ($root in ($roots | Select-Object -Unique)) {
+        foreach ($subdir in @("", "documents")) {
+            $dir = if ($subdir) { Join-Path $root $subdir } else { $root }
+            $path = Join-Path $dir $FileName
+            if (Test-Path $path) {
+                return $path
+            }
         }
     }
-
-    foreach ($dir in ($candidates | Select-Object -Unique)) {
-        $setupMarker = Join-Path $dir "setup_ai_mozc.ps1"
-        if (Test-Path $setupMarker) {
-            return $dir
-        }
-    }
-
-    if ($Preferred) { return $Preferred }
-    if ($env:ProgramFiles) { return (Join-Path $env:ProgramFiles "Mozc") }
-    return "C:\Program Files\Mozc"
+    return $null
 }
 
-$InstallDir = Resolve-MozcInstallDir -Preferred $InstallDir
+$DefaultConfig = Find-AIAssetPath -FileName "ai_config.default.json" -PreferredRoot $InstallDir
 
-$ConfigDir = Join-Path $env:LOCALAPPDATA "Google\Mozc"
-$UserConfig = Join-Path $ConfigDir "ai_config.json"
-$DefaultConfig = Join-Path $InstallDir "ai_config.default.json"
-
-if (-not (Test-Path $DefaultConfig)) {
-    Write-SetupLog "Default config not found: $DefaultConfig"
-    Write-SetupLog "Checked install dir: $InstallDir"
-    Write-SetupLog "Also try: Program Files\Mozc and Program Files (x86)\Mozc"
+if (-not $DefaultConfig) {
+    Write-SetupLog "Default config not found (checked Mozc root and Mozc\documents)"
     exit 0
 }
 
-Write-SetupLog "Using Mozc install dir: $InstallDir"
+Write-SetupLog "Using default config: $DefaultConfig"
+
+$ConfigDir = Join-Path $env:LOCALAPPDATA "Google\Mozc"
+$UserConfig = Join-Path $ConfigDir "ai_config.json"
 
 if (-not (Test-Path $ConfigDir)) {
     New-Item -ItemType Directory -Path $ConfigDir -Force | Out-Null
