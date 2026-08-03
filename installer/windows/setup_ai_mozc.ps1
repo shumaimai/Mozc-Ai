@@ -24,6 +24,7 @@ function Find-AIAssetPath {
 
     $roots = @()
     if ($PreferredRoot) { $roots += $PreferredRoot }
+    # Prefer 64-bit install path (MozcAI64.msi target)
     if ($env:ProgramFiles) { $roots += (Join-Path $env:ProgramFiles "Mozc") }
     if (${env:ProgramFiles(x86)}) { $roots += (Join-Path ${env:ProgramFiles(x86)} "Mozc") }
 

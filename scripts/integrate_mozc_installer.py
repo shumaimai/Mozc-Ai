@@ -13,7 +13,7 @@ from pathlib import Path
 def copy_installer_assets(ai_mozc_dir: Path, mozc_src: Path, dry_run: bool) -> None:
     src_dir = ai_mozc_dir / "installer" / "windows"
     dst_dir = mozc_src / "data" / "installer"
-    for name in ("ai_config.default.json", "setup_ai_mozc.ps1"):
+    for name in ("ai_config.default.json", "setup_ai_mozc.ps1", "VERIFY_INSTALL.txt"):
         src = src_dir / name
         dst = dst_dir / name
         print(f"copy {src} -> {dst}")
@@ -73,6 +73,31 @@ def patch_installer_build(mozc_src: Path, dry_run: bool) -> None:
     print(f"patch {build_file}")
     if not dry_run:
         build_file.write_text(text, encoding="utf-8")
+
+
+def patch_installer_programfiles64(mozc_src: Path, dry_run: bool) -> None:
+    """Force install to C:\\Program Files\\Mozc (not Program Files (x86)).
+
+    Mozc upstream uses ProgramFilesFolder, which can resolve to the x86
+    directory depending on MSI platform flags. AI Mozc ships a 64-bit
+    mozc_server.exe and must land in the 64-bit Program Files folder.
+    """
+    wxs_file = mozc_src / "win32" / "installer" / "installer_oss_64bit.wxs"
+    text = wxs_file.read_text(encoding="utf-8")
+
+    if 'StandardDirectory Id="ProgramFiles64Folder"' in text:
+        print("installer_oss_64bit.wxs already uses ProgramFiles64Folder; skipping")
+        return
+
+    marker = '<StandardDirectory Id="ProgramFilesFolder">'
+    replacement = '<StandardDirectory Id="ProgramFiles64Folder">'
+    if marker not in text:
+        raise RuntimeError("Could not find ProgramFilesFolder in installer_oss_64bit.wxs")
+    text = text.replace(marker, replacement, 1)
+
+    print(f"patch {wxs_file} (ProgramFiles64Folder)")
+    if not dry_run:
+        wxs_file.write_text(text, encoding="utf-8")
 
 
 def patch_installer_wxs(mozc_src: Path, dry_run: bool) -> None:
@@ -158,6 +183,7 @@ def main() -> int:
     copy_installer_assets(ai_mozc_dir, mozc_src, args.dry_run)
     patch_data_installer_build(mozc_src, args.dry_run)
     patch_installer_build(mozc_src, args.dry_run)
+    patch_installer_programfiles64(mozc_src, args.dry_run)
     patch_installer_wxs(mozc_src, args.dry_run)
 
     print()
