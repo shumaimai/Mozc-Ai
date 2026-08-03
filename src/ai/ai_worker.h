@@ -22,6 +22,7 @@ namespace ai {
 // AI processing request
 struct AIRequest {
   std::string input_key;                     // Hiragana input
+  std::string cache_key;                     // Key used for cache lookup/store
   std::vector<std::string> existing;         // Existing Mozc candidates
   std::vector<std::string> context_history;  // Recent conversion history
 };

@@ -9,11 +9,19 @@ import shutil
 import sys
 from pathlib import Path
 
+INSTALLER_ASSETS = (
+    "ai_config.default.json",
+    "setup_ai_mozc.ps1",
+    "pre_install_cleanup.ps1",
+    "post_install_verify.ps1",
+    "VERIFY_INSTALL.txt",
+)
+
 
 def copy_installer_assets(ai_mozc_dir: Path, mozc_src: Path, dry_run: bool) -> None:
     src_dir = ai_mozc_dir / "installer" / "windows"
     dst_dir = mozc_src / "data" / "installer"
-    for name in ("ai_config.default.json", "setup_ai_mozc.ps1", "VERIFY_INSTALL.txt"):
+    for name in INSTALLER_ASSETS:
         src = src_dir / name
         dst = dst_dir / name
         print(f"copy {src} -> {dst}")
@@ -25,20 +33,25 @@ def copy_installer_assets(ai_mozc_dir: Path, mozc_src: Path, dry_run: bool) -> N
 def patch_data_installer_build(mozc_src: Path, dry_run: bool) -> None:
     build_file = mozc_src / "data" / "installer" / "BUILD.bazel"
     text = build_file.read_text(encoding="utf-8")
-    marker = 'exports_files(["credits_en.html"])'
-    replacement = (
-        'exports_files([\n'
-        '    "credits_en.html",\n'
-        '    "ai_config.default.json",\n'
-        '    "setup_ai_mozc.ps1",\n'
-        '])'
-    )
-    if "ai_config.default.json" in text:
+
+    if all(name in text for name in INSTALLER_ASSETS):
         print("data/installer/BUILD.bazel already patched; skipping")
         return
-    if marker not in text:
-        raise RuntimeError("Could not patch data/installer/BUILD.bazel")
-    text = text.replace(marker, replacement, 1)
+
+    # Fresh patch or upgrade from older partial patch
+    import re
+
+    files_list = ",\n    ".join(f'"{name}"' for name in ("credits_en.html", *INSTALLER_ASSETS))
+    replacement = f"exports_files([\n    {files_list},\n])"
+
+    if 'exports_files([' in text:
+        text = re.sub(r"exports_files\(\[[^\]]*\]\)", replacement, text, count=1)
+    else:
+        marker = 'exports_files(["credits_en.html"])'
+        if marker not in text:
+            raise RuntimeError("Could not patch data/installer/BUILD.bazel")
+        text = text.replace(marker, replacement, 1)
+
     print(f"patch {build_file}")
     if not dry_run:
         build_file.write_text(text, encoding="utf-8")
@@ -48,17 +61,16 @@ def patch_installer_build(mozc_src: Path, dry_run: bool) -> None:
     build_file = mozc_src / "win32" / "installer" / "BUILD.bazel"
     text = build_file.read_text(encoding="utf-8")
 
-    if "ai_config.default.json" in text and 'MozcAI64.msi' in text:
+    if "pre_install_cleanup.ps1" in text and 'MozcAI64.msi' in text:
         print("win32/installer/BUILD.bazel already patched; skipping")
         return
 
     if "ai_config.default.json" not in text:
         src_marker = '        "//data/installer:credits_en.html",'
-        src_replacement = (
-            '        "//data/installer:ai_config.default.json",\n'
-            '        "//data/installer:credits_en.html",\n'
-            '        "//data/installer:setup_ai_mozc.ps1",'
+        extra_srcs = "\n".join(
+            f'        "//data/installer:{name}",' for name in INSTALLER_ASSETS
         )
+        src_replacement = extra_srcs + "\n" + src_marker
         if src_marker not in text:
             raise RuntimeError("Could not find installer srcs marker")
         text = text.replace(src_marker, src_replacement, 1)
@@ -76,12 +88,7 @@ def patch_installer_build(mozc_src: Path, dry_run: bool) -> None:
 
 
 def patch_installer_programfiles64(mozc_src: Path, dry_run: bool) -> None:
-    """Force install to C:\\Program Files\\Mozc (not Program Files (x86)).
-
-    Mozc upstream uses ProgramFilesFolder, which can resolve to the x86
-    directory depending on MSI platform flags. AI Mozc ships a 64-bit
-    mozc_server.exe and must land in the 64-bit Program Files folder.
-    """
+    """Force install to C:\\Program Files\\Mozc (not Program Files (x86))."""
     wxs_file = mozc_src / "win32" / "installer" / "installer_oss_64bit.wxs"
     text = wxs_file.read_text(encoding="utf-8")
 
@@ -104,7 +111,7 @@ def patch_installer_wxs(mozc_src: Path, dry_run: bool) -> None:
     wxs_file = mozc_src / "win32" / "installer" / "installer_oss_64bit.wxs"
     text = wxs_file.read_text(encoding="utf-8")
 
-    if 'Component Id="AIConfigDefault"' in text:
+    if 'Component Id="AIPreInstallCleanup"' in text:
         print("installer_oss_64bit.wxs already patched; skipping")
         return
 
@@ -112,7 +119,10 @@ def patch_installer_wxs(mozc_src: Path, dry_run: bool) -> None:
     feature_replacement = (
         '      <ComponentRef Id="CreditsEn" />\n'
         '      <ComponentRef Id="AIConfigDefault" />\n'
-        '      <ComponentRef Id="AISetupScript" />'
+        '      <ComponentRef Id="AISetupScript" />\n'
+        '      <ComponentRef Id="AIPreInstallCleanup" />\n'
+        '      <ComponentRef Id="AIPostInstallVerify" />\n'
+        '      <ComponentRef Id="AIVerifyInstall" />'
     )
     if feature_marker not in text:
         raise RuntimeError("Could not find Feature ComponentRef marker")
@@ -127,6 +137,15 @@ def patch_installer_wxs(mozc_src: Path, dry_run: bool) -> None:
           </Component>
           <Component Id="AISetupScript">
             <File Id="setup_ai_mozc.ps1" Name="setup_ai_mozc.ps1" DiskId="1" Checksum="yes" Vital="yes" Source="$(var.DocumentsDir)/setup_ai_mozc.ps1" KeyPath="yes" />
+          </Component>
+          <Component Id="AIPreInstallCleanup">
+            <File Id="pre_install_cleanup.ps1" Name="pre_install_cleanup.ps1" DiskId="1" Checksum="yes" Vital="yes" Source="$(var.DocumentsDir)/pre_install_cleanup.ps1" />
+          </Component>
+          <Component Id="AIPostInstallVerify">
+            <File Id="post_install_verify.ps1" Name="post_install_verify.ps1" DiskId="1" Checksum="yes" Vital="yes" Source="$(var.DocumentsDir)/post_install_verify.ps1" />
+          </Component>
+          <Component Id="AIVerifyInstall">
+            <File Id="VERIFY_INSTALL.txt" Name="VERIFY_INSTALL.txt" DiskId="1" Checksum="yes" Vital="yes" Source="$(var.DocumentsDir)/VERIFY_INSTALL.txt" />
           </Component>"""
     if component_marker not in text:
         raise RuntimeError("Could not find CreditsEn component marker")
@@ -136,8 +155,13 @@ def patch_installer_wxs(mozc_src: Path, dry_run: bool) -> None:
         '      <Custom Action="FixupConfigFilePermission" Before="EnableTipProfile" '
         'Condition="NOT (REMOVE=&quot;ALL&quot;)" />'
     )
-    sequence_replacement = sequence_marker + """
-      <Custom Action="SeedAIConfig" After="FixupConfigFilePermission" Condition="(NOT (REMOVE=&quot;ALL&quot;)) AND (NOT UPGRADING)" />"""
+    sequence_replacement = (
+        sequence_marker
+        + """
+      <Custom Action="PreInstallCleanup" Before="InstallValidate" Condition="(NOT (REMOVE=&quot;ALL&quot;)) AND (NOT UPGRADING)" />
+      <Custom Action="SeedAIConfig" After="FixupConfigFilePermission" Condition="(NOT (REMOVE=&quot;ALL&quot;)) AND (NOT UPGRADING)" />
+      <Custom Action="PostInstallVerify" After="SeedAIConfig" Condition="(NOT (REMOVE=&quot;ALL&quot;)) AND (NOT UPGRADING)" />"""
+    )
     if sequence_marker not in text:
         raise RuntimeError("Could not find InstallExecuteSequence marker")
     text = text.replace(sequence_marker, sequence_replacement, 1)
@@ -146,16 +170,31 @@ def patch_installer_wxs(mozc_src: Path, dry_run: bool) -> None:
         '    <CustomAction Id="EnableTipProfile" DllEntry="EnableTipProfile" '
         'Execute="commit" Impersonate="yes" BinaryRef="mozc_installer_helper.dll" />'
     )
-    custom_action_replacement = custom_action_marker + """
-    <CustomAction Id="SeedAIConfig"
+    custom_action_replacement = custom_action_marker + r"""
+    <CustomAction Id="PreInstallCleanup"
                   Directory="MozcDir"
-                  ExeCommand="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;[MozcDir]documents\setup_ai_mozc.ps1&quot; -Quiet"
+                  ExeCommand="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;[MozcDir]documents\pre_install_cleanup.ps1&quot; -Quiet"
                   Execute="deferred"
                   Impersonate="yes"
-                  Return="check" />"""
+                  Return="ignore" />
+    <CustomAction Id="SeedAIConfig"
+                  Directory="MozcDir"
+                  ExeCommand="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;[MozcDir]documents\setup_ai_mozc.ps1&quot; -CleanInstall -Quiet"
+                  Execute="deferred"
+                  Impersonate="yes"
+                  Return="ignore" />
+    <CustomAction Id="PostInstallVerify"
+                  Directory="MozcDir"
+                  ExeCommand="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;[MozcDir]documents\post_install_verify.ps1&quot; -Quiet"
+                  Execute="deferred"
+                  Impersonate="yes"
+                  Return="ignore" />"""
     if custom_action_marker not in text:
         raise RuntimeError("Could not find custom action marker")
     text = text.replace(custom_action_marker, custom_action_replacement, 1)
+
+    # Upgrade older patches that used Return="check"
+    text = text.replace('Return="check" />', 'Return="ignore" />')
 
     print(f"patch {wxs_file}")
     if not dry_run:

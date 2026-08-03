@@ -170,9 +170,9 @@ class SimpleJsonParser {
         json, "api_key_env", "DEEPSEEK_API_KEY");
 
     // Parse timeout config
-    config.timeout.connect_timeout_ms = GetInt(json, "connect_timeout_ms", 50);
-    config.timeout.request_timeout_ms = GetInt(json, "request_timeout_ms", 500);
-    config.timeout.max_wait_ms = GetInt(json, "max_wait_ms", 600);
+    config.timeout.connect_timeout_ms = GetInt(json, "connect_timeout_ms", 5000);
+    config.timeout.request_timeout_ms = GetInt(json, "request_timeout_ms", 15000);
+    config.timeout.max_wait_ms = GetInt(json, "max_wait_ms", 16000);
     config.timeout.warmup_timeout_ms = GetInt(json, "warmup_timeout_ms", 60000);
 
     // Parse cache config
@@ -353,10 +353,10 @@ AIConfig AIConfigManager::GetDefaultConfig() {
   config.openai_compatible.model = "deepseek-chat";
   config.openai_compatible.api_key_env = "DEEPSEEK_API_KEY";
 
-  // Timeout defaults (Critical for freeze prevention)
-  config.timeout.connect_timeout_ms = 50;    // 50ms - very short
-  config.timeout.request_timeout_ms = 500;   // 500ms
-  config.timeout.max_wait_ms = 600;          // 600ms max
+  // Timeout defaults (cloud API needs longer; still bounded)
+  config.timeout.connect_timeout_ms = 5000;
+  config.timeout.request_timeout_ms = 15000;
+  config.timeout.max_wait_ms = 16000;
   config.timeout.warmup_timeout_ms = 60000;  // 60s for warmup
 
   // Cache defaults

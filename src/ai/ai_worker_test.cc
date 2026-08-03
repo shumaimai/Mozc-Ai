@@ -116,6 +116,7 @@ TEST(AIWorkerTest, ResultsInCache) {
   // Enqueue request
   AIRequest request;
   request.input_key = "きょう";
+  request.cache_key = "きょう";
   worker.EnqueueRequest(std::move(request));
 
   // Wait for processing

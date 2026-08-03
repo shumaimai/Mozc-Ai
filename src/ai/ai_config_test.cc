@@ -27,9 +27,9 @@ TEST(AIConfigTest, DefaultConfig) {
   EXPECT_EQ(config.openai_compatible.api_key_env, "DEEPSEEK_API_KEY");
 
   // Timeout defaults (critical for freeze prevention)
-  EXPECT_EQ(config.timeout.connect_timeout_ms, 50);
-  EXPECT_EQ(config.timeout.request_timeout_ms, 500);
-  EXPECT_EQ(config.timeout.max_wait_ms, 600);
+  EXPECT_EQ(config.timeout.connect_timeout_ms, 5000);
+  EXPECT_EQ(config.timeout.request_timeout_ms, 15000);
+  EXPECT_EQ(config.timeout.max_wait_ms, 16000);
 
   // Cache defaults
   EXPECT_EQ(config.cache.ttl_seconds, 60);
@@ -75,12 +75,12 @@ TEST(AIConfigTest, IsEnabled) {
 TEST(AIConfigTest, TimeoutSanity) {
   AIConfig config = AIConfigManager::GetDefaultConfig();
 
-  // Connection timeout should be very short
-  EXPECT_LT(config.timeout.connect_timeout_ms, 100);
+  // Connection timeout should allow cloud API handshake
+  EXPECT_GE(config.timeout.connect_timeout_ms, 1000);
 
-  // Request timeout should be reasonable
+  // Request timeout should be reasonable for cloud APIs
   EXPECT_GT(config.timeout.request_timeout_ms, 0);
-  EXPECT_LT(config.timeout.request_timeout_ms, 1000);
+  EXPECT_LE(config.timeout.request_timeout_ms, 30000);
 
   // Max wait should be >= request timeout
   EXPECT_GE(config.timeout.max_wait_ms, config.timeout.request_timeout_ms);

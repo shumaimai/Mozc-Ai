@@ -249,6 +249,9 @@ class OllamaBackend : public AIBackendInterface {
 #ifdef _WIN32
   bool SendHttpRequestWindows(const std::string& body, int timeout_ms,
                               std::string& response) const {
+    auto config = AIConfigManager::Instance().GetConfig();
+    int connect_timeout_ms = config.timeout.connect_timeout_ms;
+
     // Open session
     HINTERNET hSession = WinHttpOpen(
         L"MozcAI/1.0",
@@ -261,12 +264,12 @@ class OllamaBackend : public AIBackendInterface {
       return false;
     }
 
-    // Set timeouts (Critical for freeze prevention)
+    // Set timeouts
     WinHttpSetTimeouts(hSession,
-        0,            // DNS resolve timeout
-        50,           // Connection timeout (50ms - very short!)
-        timeout_ms,   // Send timeout
-        timeout_ms);  // Receive timeout
+        0,
+        connect_timeout_ms,
+        timeout_ms,
+        timeout_ms);
 
     // Convert host to wide string
     std::wstring whost(host_.begin(), host_.end());
@@ -352,6 +355,9 @@ class OllamaBackend : public AIBackendInterface {
 #else
   bool SendHttpRequestPosix(const std::string& body, int timeout_ms,
                             std::string& response) const {
+    auto config = AIConfigManager::Instance().GetConfig();
+    int connect_timeout_ms = config.timeout.connect_timeout_ms;
+
     // Create socket
     int sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0) {
@@ -389,7 +395,7 @@ class OllamaBackend : public AIBackendInterface {
     pfd.fd = sock;
     pfd.events = POLLOUT;
 
-    int poll_result = poll(&pfd, 1, 50);  // 50ms connection timeout
+    int poll_result = poll(&pfd, 1, connect_timeout_ms);
     if (poll_result <= 0) {
       close(sock);
       return false;
@@ -526,6 +532,10 @@ std::unique_ptr<AIBackendInterface> CreateOllamaBackend(const OllamaConfig& conf
 }
 
 std::unique_ptr<AIBackendInterface> CreateBackend(const AIConfig& config) {
+  if (config.debug.use_mock) {
+    return CreateMockBackend();
+  }
+
   switch (config.backend_type) {
     case BackendType::OLLAMA:
       return CreateOllamaBackend(config.ollama);

@@ -104,25 +104,21 @@ bazelisk build package --config release_build
 
 > GUI だけで確認する手順: `installer/windows/VERIFY_INSTALL.txt`（MSI の `documents\` に同梱）
 
-### 0. 古い Mozc を完全削除（重要）
+### 1. Mozc AI をインストール（クリーンインストール自動）
 
-1. **設定** → **アプリ** → **インストール済みアプリ**
-2. **「Google 日本語入力」「Mozc」** が複数あれば **すべて** アンインストール
-3. PC を再起動
+`MozcAI64.msi` を管理者として実行するだけで、以下が自動で行われます:
 
-古い 32bit 版が `C:\Program Files (x86)\Mozc\` に残っていると、AI なしの `mozc_server.exe` が動き続けます。
+1. 古い Mozc プロセスの停止
+2. `C:\Program Files (x86)\Mozc\` の削除（古い x86 版）
+3. `C:\Program Files\Mozc\` への 64-bit AI 版インストール
+4. `ai_config.json` の配置（毎回テンプレートから上書き）
+5. インストール検証結果の書き込み（`install_verify.txt`）
 
-### 1. Mozc AI をインストール
+**手動でのファイル削除やサーバー再起動は不要です。**
 
-`MozcAI64.msi` を管理者として実行。
+インストール後に **PC を再起動** してから、下記を確認してください。
 
 **正しいインストール先**: `C:\Program Files\Mozc\`（**(x86) ではない**）
-
-| ファイル | AI 版 (v0.0.3.1) | 古い版（AI なし） |
-|---------|------------------|------------------|
-| パス | `C:\Program Files\Mozc\mozc_server.exe` | `C:\Program Files (x86)\Mozc\mozc_server.exe` |
-| サイズ | **22,668,800 バイト** | 22,641,664 バイト |
-| AIRewriter | あり | なし |
 
 ### 2. 日本語 IME を有効化
 
@@ -136,8 +132,9 @@ bazelisk build package --config release_build
 
 ### 4. 動作確認
 
-- 日本語入力で同じ文を2回入力（1回目: Mozc 候補のみ、2回目以降: AI 候補がキャッシュから表示）
-- ログ: `%LOCALAPPDATA%\Google\Mozc\ai_log.txt`
+1. `%LOCALAPPDATA%\Google\Mozc\install_verify.txt` で **RESULT: PASS** を確認
+2. 日本語入力で同じ文を2回入力（1回目: Mozc 候補のみ、2回目以降: AI 候補がキャッシュから表示）
+3. ログ: `%LOCALAPPDATA%\Google\Mozc\ai_log.txt`（「AIRewriter constructed」が出ていれば OK）
 
 ---
 
@@ -149,7 +146,10 @@ bazelisk build package --config release_build
 | `mozc_tip32.dll` / `mozc_tip64.dll` | IME 本体 |
 | `mozc_tool.exe` | 設定ツール |
 | `ai_config.default.json` | デフォルト AI 設定テンプレート |
-| `setup_ai_mozc.ps1` | ユーザー設定の初期化スクリプト |
+| `setup_ai_mozc.ps1` | ユーザー設定の初期化スクリプト（クリーンインストール対応） |
+| `pre_install_cleanup.ps1` | インストール前クリーンアップ（プロセス停止・x86 削除） |
+| `post_install_verify.ps1` | インストール後検証（AIRewriter マーカー確認） |
+| `VERIFY_INSTALL.txt` | エンドユーザー向け確認手順 |
 | MSVC ランタイム / Qt | Mozc 標準同梱 |
 
 ---
@@ -164,10 +164,10 @@ bazelisk build package --config release_build
 
 ### AI 候補が出ない / ログがない
 
-1. **タスクマネージャー** (Ctrl+Shift+Esc) → **詳細** → `mozc_server.exe` を右クリック → **ファイルの場所を開く**
+1. `%LOCALAPPDATA%\Google\Mozc\install_verify.txt` を確認（PASS かどうか）
+2. **タスクマネージャー** (Ctrl+Shift+Esc) → **詳細** → `mozc_server.exe` を右クリック → **ファイルの場所を開く**
    - 正: `C:\Program Files\Mozc\`
-   - 誤: `C:\Program Files (x86)\Mozc\` → 古い Mozc が動いている。手順 0 からやり直し
-2. `mozc_server.exe` のサイズが **22,668,800 バイト前後** か確認（プロパティ）
+   - 誤: `C:\Program Files (x86)\Mozc\` → MSI を再インストール（クリーンアップは自動）
 3. 設定: `%LOCALAPPDATA%\Google\Mozc\ai_config.json`（`backend_type: deepseek`）
 4. 環境変数 `DEEPSEEK_API_KEY` を設定して PC 再起動
 5. ログ: `%LOCALAPPDATA%\Google\Mozc\ai_log.txt`（v0.0.3.2 以降は起動時に作成）

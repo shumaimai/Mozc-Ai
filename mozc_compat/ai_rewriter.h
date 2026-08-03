@@ -93,6 +93,7 @@ class AIRewriter : public RewriterInterface {
   mutable std::unique_ptr<ai::AIWorker> worker_;
 
   // Initialization state
+  mutable std::mutex init_mutex_;
   mutable std::atomic<bool> initialized_{false};
   mutable std::atomic<int> init_failures_{0};
 

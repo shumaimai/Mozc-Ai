@@ -143,7 +143,12 @@ AIRewriter::Stats AIRewriter::GetStats() const {
 }
 
 void AIRewriter::EnsureInitialized() const {
-  // Fast path: already initialized
+  if (initialized_.load()) {
+    return;
+  }
+
+  std::lock_guard<std::mutex> lock(init_mutex_);
+
   if (initialized_.load()) {
     return;
   }
@@ -244,6 +249,7 @@ void AIRewriter::RequestAICandidates(
   // Build request
   ai::AIRequest request;
   request.input_key = key;
+  request.cache_key = GetCacheKey(key);
   request.existing = GetExistingCandidates(segments, 5);
 
   // Add context history
