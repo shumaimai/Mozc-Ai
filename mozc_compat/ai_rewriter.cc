@@ -28,7 +28,10 @@ void LogRewriterOnce() {
 }
 }  // namespace
 
-AIRewriter::AIRewriter() = default;
+AIRewriter::AIRewriter() {
+  ai::AILogger::EnsureOpen();
+  ai::AILogger::Info("AIRewriter constructed");
+}
 
 AIRewriter::~AIRewriter() {
   // Stop worker thread gracefully
