@@ -93,6 +93,7 @@ cc_library(
     linkopts = WINDOWS_LINKOPTS,
     deps = [
         ":ai_config",
+        ":ai_logger",
     ],
 )
 

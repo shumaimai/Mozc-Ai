@@ -3,13 +3,13 @@
 
 #include "ai_backend.h"
 #include "ai_config.h"
+#include "ai_logger.h"
 
 #include <sstream>
 #include <chrono>
 #include <algorithm>
 #include <cstring>
 #include <cctype>
-#include <iostream>
 #include <cstdlib>
 
 #ifdef _WIN32
@@ -17,8 +17,6 @@
 #include <winhttp.h>
 #pragma comment(lib, "winhttp.lib")
 #endif
-
-#define AI_LOG(msg) std::cerr << "[AI-Mozc OpenAI] " << msg << std::endl
 
 namespace mozc {
 namespace ai {
@@ -157,7 +155,7 @@ class OpenAICompatibleBackend : public AIBackendInterface {
 
   bool Initialize() override {
     if (!ParseApiEndpoint(config_.endpoint, endpoint_)) {
-      AI_LOG("Failed to parse API endpoint: " + config_.endpoint);
+      AILogger::Error("Failed to parse API endpoint: " + config_.endpoint);
       return false;
     }
 
@@ -165,11 +163,13 @@ class OpenAICompatibleBackend : public AIBackendInterface {
 
     const char* api_key = std::getenv(config_.api_key_env.c_str());
     if (!api_key || api_key[0] == '\0') {
-      AI_LOG("API key not found in environment variable: " + config_.api_key_env);
+      AILogger::Error("API key not found in environment variable: " +
+                      config_.api_key_env);
       return false;
     }
     api_key_ = api_key;
     initialized_ = true;
+    AILogger::Info("OpenAI-compatible backend initialized: " + GetConfigInfo());
     return true;
   }
 
@@ -204,6 +204,8 @@ class OpenAICompatibleBackend : public AIBackendInterface {
     result.success = !result.candidates.empty();
     if (!result.success) {
       result.error_message = "No candidates in API response";
+      AILogger::Warn("API response had no candidates: " +
+                     response.substr(0, std::min(response.size(), size_t(200))));
     }
 
     auto end_time = std::chrono::steady_clock::now();
@@ -274,7 +276,7 @@ class OpenAICompatibleBackend : public AIBackendInterface {
     (void)body;
     (void)timeout_ms;
     (void)response;
-    AI_LOG("OpenAI-compatible backend requires Windows (WinHTTP HTTPS)");
+    AILogger::Error("OpenAI-compatible backend requires Windows (WinHTTP HTTPS)");
     return false;
 #endif
   }
@@ -282,6 +284,9 @@ class OpenAICompatibleBackend : public AIBackendInterface {
 #ifdef _WIN32
   bool SendHttpRequestWindows(const std::string& body, int timeout_ms,
                               std::string& response) const {
+    auto config = AIConfigManager::Instance().GetConfig();
+    int connect_timeout_ms = config.timeout.connect_timeout_ms;
+
     HINTERNET hSession = WinHttpOpen(
         L"MozcAI/1.0",
         WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
@@ -290,10 +295,11 @@ class OpenAICompatibleBackend : public AIBackendInterface {
         0);
 
     if (!hSession) {
+      AILogger::Error("WinHttpOpen failed");
       return false;
     }
 
-    WinHttpSetTimeouts(hSession, 0, 50, timeout_ms, timeout_ms);
+    WinHttpSetTimeouts(hSession, 0, connect_timeout_ms, timeout_ms, timeout_ms);
 
     std::wstring whost(endpoint_.host.begin(), endpoint_.host.end());
 
@@ -304,6 +310,7 @@ class OpenAICompatibleBackend : public AIBackendInterface {
         0);
 
     if (!hConnect) {
+      AILogger::Error("WinHttpConnect failed to " + endpoint_.host);
       WinHttpCloseHandle(hSession);
       return false;
     }
@@ -321,6 +328,7 @@ class OpenAICompatibleBackend : public AIBackendInterface {
         flags);
 
     if (!hRequest) {
+      AILogger::Error("WinHttpOpenRequest failed");
       WinHttpCloseHandle(hConnect);
       WinHttpCloseHandle(hSession);
       return false;
@@ -350,6 +358,7 @@ class OpenAICompatibleBackend : public AIBackendInterface {
         0);
 
     if (!result) {
+      AILogger::Error("WinHttpSendRequest failed");
       WinHttpCloseHandle(hRequest);
       WinHttpCloseHandle(hConnect);
       WinHttpCloseHandle(hSession);
@@ -358,10 +367,25 @@ class OpenAICompatibleBackend : public AIBackendInterface {
 
     result = WinHttpReceiveResponse(hRequest, NULL);
     if (!result) {
+      AILogger::Error("WinHttpReceiveResponse failed");
       WinHttpCloseHandle(hRequest);
       WinHttpCloseHandle(hConnect);
       WinHttpCloseHandle(hSession);
       return false;
+    }
+
+    DWORD status_code = 0;
+    DWORD status_size = sizeof(status_code);
+    if (WinHttpQueryHeaders(
+            hRequest,
+            WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+            WINHTTP_HEADER_NAME_BY_INDEX,
+            &status_code,
+            &status_size,
+            WINHTTP_NO_HEADER_INDEX)) {
+      if (status_code != 200) {
+        AILogger::Error("HTTP status " + std::to_string(status_code));
+      }
     }
 
     response.clear();
@@ -376,6 +400,12 @@ class OpenAICompatibleBackend : public AIBackendInterface {
     WinHttpCloseHandle(hRequest);
     WinHttpCloseHandle(hConnect);
     WinHttpCloseHandle(hSession);
+
+    if (status_code != 0 && status_code != 200) {
+      AILogger::Warn("API error response: " +
+                     response.substr(0, std::min(response.size(), size_t(300))));
+      return false;
+    }
 
     return !response.empty();
   }

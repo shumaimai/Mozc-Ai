@@ -1,8 +1,10 @@
 # AI Mozc IME - post-install setup
 # Seeds user config from the installed default template.
+# With -CleanInstall, always refreshes config and clears stale logs.
 
 param(
     [string]$InstallDir = "",
+    [switch]$CleanInstall,
     [switch]$PullModel,
     [switch]$Quiet
 )
@@ -24,7 +26,6 @@ function Find-AIAssetPath {
 
     $roots = @()
     if ($PreferredRoot) { $roots += $PreferredRoot }
-    # Prefer 64-bit install path (MozcAI64.msi target)
     if ($env:ProgramFiles) { $roots += (Join-Path $env:ProgramFiles "Mozc") }
     if (${env:ProgramFiles(x86)}) { $roots += (Join-Path ${env:ProgramFiles(x86)} "Mozc") }
 
@@ -51,18 +52,37 @@ Write-SetupLog "Using default config: $DefaultConfig"
 
 $ConfigDir = Join-Path $env:LOCALAPPDATA "Google\Mozc"
 $UserConfig = Join-Path $ConfigDir "ai_config.json"
+$LogFile = Join-Path $ConfigDir "ai_log.txt"
 
 if (-not (Test-Path $ConfigDir)) {
     New-Item -ItemType Directory -Path $ConfigDir -Force | Out-Null
     Write-SetupLog "Created config directory: $ConfigDir"
 }
 
-if (-not (Test-Path $UserConfig)) {
+if ($CleanInstall -or -not (Test-Path $UserConfig)) {
     Copy-Item -Path $DefaultConfig -Destination $UserConfig -Force
-    Write-SetupLog "Created user config: $UserConfig"
+    if ($CleanInstall) {
+        Write-SetupLog "Refreshed user config (clean install): $UserConfig"
+    } else {
+        Write-SetupLog "Created user config: $UserConfig"
+    }
 } else {
     Write-SetupLog "User config already exists, leaving unchanged: $UserConfig"
+    Write-SetupLog "Tip: use -CleanInstall to overwrite from template"
 }
+
+if ($CleanInstall -and (Test-Path $LogFile)) {
+    Remove-Item -Path $LogFile -Force -ErrorAction SilentlyContinue
+    Write-SetupLog "Cleared stale log for fresh verification"
+}
+
+$markerFile = Join-Path $ConfigDir "install_ready.txt"
+@(
+    "Mozc AI install setup complete",
+    "Timestamp: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')",
+    "Config: $UserConfig",
+    "Next: Reboot PC, then type in IME and check ai_log.txt"
+) | Set-Content -Path $markerFile -Encoding UTF8
 
 Write-SetupLog "User config path (used by mozc_server): $UserConfig"
 

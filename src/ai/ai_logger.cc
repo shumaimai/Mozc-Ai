@@ -136,9 +136,9 @@ void AILogger::EnsureOpen() {
 #endif
 
   log_file_.open(log_path, std::ios::app);
-  initialized_ = true;
 
   if (log_file_.is_open()) {
+    initialized_ = true;
     std::string startup = "[" + GetTimestamp() + "] [INFO ] AI logger opened: " +
                           log_path + "\n";
     log_file_ << startup;
