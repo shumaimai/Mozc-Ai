@@ -102,23 +102,37 @@ bazelisk build package --config release_build
 
 ## エンドユーザー向けインストール手順
 
+> GUI だけで確認する手順: `installer/windows/VERIFY_INSTALL.txt`（MSI の `documents\` に同梱）
+
+### 0. 古い Mozc を完全削除（重要）
+
+1. **設定** → **アプリ** → **インストール済みアプリ**
+2. **「Google 日本語入力」「Mozc」** が複数あれば **すべて** アンインストール
+3. PC を再起動
+
+古い 32bit 版が `C:\Program Files (x86)\Mozc\` に残っていると、AI なしの `mozc_server.exe` が動き続けます。
+
 ### 1. Mozc AI をインストール
 
 `MozcAI64.msi` を管理者として実行。
 
-インストール先: `C:\Program Files\Mozc\`
+**正しいインストール先**: `C:\Program Files\Mozc\`（**(x86) ではない**）
+
+| ファイル | AI 版 (v0.0.3.1) | 古い版（AI なし） |
+|---------|------------------|------------------|
+| パス | `C:\Program Files\Mozc\mozc_server.exe` | `C:\Program Files (x86)\Mozc\mozc_server.exe` |
+| サイズ | **22,668,800 バイト** | 22,641,664 バイト |
+| AIRewriter | あり | なし |
 
 ### 2. 日本語 IME を有効化
 
 設定 → 時刻と言語 → 言語 → 日本語 → キーボードに **Mozc** を追加
 
-### 3. Ollama をセットアップ
+### 3. DeepSeek API をセットアップ
 
-```powershell
-# https://ollama.ai からインストール後
-ollama pull gemma3:1b
-ollama serve
-```
+1. https://platform.deepseek.com/ で API キーを取得
+2. **Win + R** → `sysdm.cpl` → **環境変数** → ユーザー環境変数に `DEEPSEEK_API_KEY` を追加
+3. PC を再起動
 
 ### 4. 動作確認
 
@@ -148,18 +162,19 @@ ollama serve
 - `BAZEL_VC` が正しいか確認（`build.ps1 -CheckOnly`）
 - Mozc 公式: [build_mozc_in_windows.md](https://github.com/google/mozc/blob/master/docs/build_mozc_in_windows.md)
 
-### AI 候補が出ない
+### AI 候補が出ない / ログがない
 
-1. Ollama 起動確認: `curl http://localhost:11434/api/tags`
-2. 設定確認: `%LOCALAPPDATA%\Google\Mozc\ai_config.json`
-   - **注意**: 設定は `Program Files\Mozc` では読まれません。必ず `%LOCALAPPDATA%\Google\Mozc\` です。
-   - テンプレートは `C:\Program Files\Mozc\documents\ai_config.default.json`（x86 の場合は `Program Files (x86)\Mozc\documents\`）にあります。
-3. 手動で設定初期化:
+1. **タスクマネージャー** (Ctrl+Shift+Esc) → **詳細** → `mozc_server.exe` を右クリック → **ファイルの場所を開く**
+   - 正: `C:\Program Files\Mozc\`
+   - 誤: `C:\Program Files (x86)\Mozc\` → 古い Mozc が動いている。手順 0 からやり直し
+2. `mozc_server.exe` のサイズが **22,668,800 バイト前後** か確認（プロパティ）
+3. 設定: `%LOCALAPPDATA%\Google\Mozc\ai_config.json`（`backend_type: deepseek`）
+4. 環境変数 `DEEPSEEK_API_KEY` を設定して PC 再起動
+5. ログ: `%LOCALAPPDATA%\Google\Mozc\ai_log.txt`（v0.0.3.2 以降は起動時に作成）
 
-   ```powershell
-   # documents フォルダ内のスクリプトを実行（64/86 自動検出）
-   powershell -ExecutionPolicy Bypass -File "C:\Program Files (x86)\Mozc\documents\setup_ai_mozc.ps1"
-   ```
+### インストール先が (x86) になる
+
+v0.0.3.1 以前の MSI は Mozc 本家と同じ `ProgramFilesFolder` を使っており、環境によっては `Program Files (x86)` に入ることがあります。**v0.0.3.2 以降** で `ProgramFiles64Folder` に修正済みです。
 
 ---
 

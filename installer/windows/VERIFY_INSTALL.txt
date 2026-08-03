@@ -1,0 +1,46 @@
+Mozc AI インストール確認（GUI のみ・コマンド不要）
+================================================
+
+■ 1. 正しいインストール先を確認
+
+  Win + R キー → 次を貼って Enter:
+
+    C:\Program Files\Mozc
+
+  mozc_server.exe を右クリック → プロパティ → サイズ
+
+    AI 版 (v0.0.3.1 以降): 約 21.6 MB (22,668,800 バイト前後)
+    古い版 (AI なし):       約 21.6 MB だが別ファイル (22,641,664 バイト前後)
+
+  ※ 「Program Files (x86)\Mozc」にあるのは古い Google 日本語入力の可能性が高いです。
+    AI 版は「Program Files\Mozc」（(x86) なし）に入ります。
+
+■ 2. 古い Mozc を完全削除
+
+  設定 → アプリ → インストール済みアプリ
+  「Google 日本語入力」「Mozc」が複数あればすべてアンインストール
+  PC を再起動
+  MozcAI64.msi を管理者として再インストール
+  もう一度 PC を再起動
+
+■ 3. 動いている mozc_server を確認
+
+  Ctrl + Shift + Esc → 詳細タブ
+  mozc_server.exe を右クリック → ファイルの場所を開く
+
+  正しい: C:\Program Files\Mozc\
+  間違い: C:\Program Files (x86)\Mozc\
+
+■ 4. ログ確認
+
+  Win + R → 次を貼って Enter:
+
+    %LOCALAPPDATA%\Google\Mozc
+
+  ai_log.txt があればメモ帳で開く。
+  「AIRewriter constructed」または「AIRewriter active」が出ていれば AI 動作中。
+
+■ 5. DeepSeek 設定
+
+  同じフォルダの ai_config.json で backend_type が deepseek であること。
+  環境変数 DEEPSEEK_API_KEY をユーザー環境変数に設定済みであること。
