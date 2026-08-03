@@ -115,6 +115,10 @@ std::string GetUserLogDirectory() {
 }  // namespace
 
 void AILogger::Initialize() {
+  EnsureOpen();
+}
+
+void AILogger::EnsureOpen() {
   std::lock_guard<std::mutex> lock(mutex_);
 
   if (initialized_) {
@@ -122,8 +126,6 @@ void AILogger::Initialize() {
   }
 
   std::string log_dir = GetUserLogDirectory();
-
-  // Create directory if needed
   CreateDirectoryRecursive(log_dir);
 
   std::string log_path = log_dir +
@@ -136,8 +138,15 @@ void AILogger::Initialize() {
   log_file_.open(log_path, std::ios::app);
   initialized_ = true;
 
-  // Log initialization
-  std::cerr << "[AI-Mozc Logger] Initialized, log path: " << log_path << std::endl;
+  if (log_file_.is_open()) {
+    std::string startup = "[" + GetTimestamp() + "] [INFO ] AI logger opened: " +
+                          log_path + "\n";
+    log_file_ << startup;
+    log_file_.flush();
+  } else {
+    std::cerr << "[AI-Mozc Logger] Failed to open log file: " << log_path
+              << std::endl;
+  }
 }
 
 std::string AILogger::GetLogPath() {
@@ -207,27 +216,13 @@ void AILogger::Flush() {
 }
 
 void AILogger::Log(LogLevel level, const std::string& msg) {
+  EnsureOpen();
+
   if (!ShouldLog(level)) {
     return;
   }
 
   std::lock_guard<std::mutex> lock(mutex_);
-
-  if (!initialized_) {
-    // Initialize on first use
-    std::string log_dir = GetUserLogDirectory();
-    CreateDirectoryRecursive(log_dir);
-
-    std::string log_path = log_dir +
-#ifdef _WIN32
-        "\\ai_log.txt";
-#else
-        "/ai_log.txt";
-#endif
-
-    log_file_.open(log_path, std::ios::app);
-    initialized_ = true;
-  }
 
   if (!log_file_.is_open()) {
     // Fallback to stderr

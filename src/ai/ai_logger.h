@@ -34,6 +34,9 @@ class AILogger {
   // Initialize logger
   static void Initialize();
 
+  // Create log file if it does not exist yet (independent of log level)
+  static void EnsureOpen();
+
   // Flush log file
   static void Flush();
 
