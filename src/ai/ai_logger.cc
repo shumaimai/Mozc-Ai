@@ -19,7 +19,6 @@
 #include <direct.h>
 #include <share.h>
 #define MKDIR(path) _mkdir(path)
-// Undefine Windows macros that conflict with our code
 #undef ERROR
 #undef min
 #undef max
@@ -33,14 +32,12 @@
 namespace mozc {
 namespace ai {
 
-// Static member initialization
 std::mutex AILogger::mutex_;
-std::ofstream AILogger::log_file_;
+std::string AILogger::log_path_;
 bool AILogger::initialized_ = false;
 
 namespace {
 
-// Create directory recursively (cross-platform, no std::filesystem dependency)
 bool CreateDirectoryRecursive(const std::string& path) {
   if (path.empty()) return true;
 
@@ -89,6 +86,17 @@ bool CreateDirectoryRecursive(const std::string& path) {
   return true;
 }
 
+std::string GetParentPath(const std::string& path) {
+#ifdef _WIN32
+  char separator = '\\';
+#else
+  char separator = '/';
+#endif
+  size_t pos = path.rfind(separator);
+  if (pos == std::string::npos) return "";
+  return path.substr(0, pos);
+}
+
 std::string GetUserLogDirectory() {
 #ifdef _WIN32
   char path[MAX_PATH];
@@ -112,20 +120,6 @@ std::string GetUserLogDirectory() {
     return std::string(home) + "/.mozc";
   }
   return ".";
-#endif
-}
-
-std::string& ActiveLogPath() {
-  static std::string path;
-  return path;
-}
-
-std::string PrimaryLogPath() {
-  return GetUserLogDirectory() +
-#ifdef _WIN32
-      "\\ai_log.txt";
-#else
-      "/ai_log.txt";
 #endif
 }
 
@@ -159,6 +153,31 @@ bool AppendLineToFile(const std::string& path, const std::string& line) {
   return true;
 }
 
+std::string ResolveLogDirectory() {
+  // Prefer the same directory as ai_config.json (known to work for this user).
+  std::string config_path = AIConfigManager::Instance().GetConfigPath();
+  std::string config_dir = GetParentPath(config_path);
+  if (!config_dir.empty()) {
+    return config_dir;
+  }
+  return GetUserLogDirectory();
+}
+
+void WriteLogLocationMarker(const std::string& log_path) {
+  std::string dir = GetParentPath(log_path);
+  if (dir.empty()) {
+    return;
+  }
+  std::string marker = dir +
+#ifdef _WIN32
+      "\\ai_log_location.txt";
+#else
+      "/ai_log_location.txt";
+#endif
+  std::string content = "ai_log.txt path:\n" + log_path + "\n";
+  AppendLineToFile(marker, content);
+}
+
 }  // namespace
 
 void AILogger::Initialize() {
@@ -168,42 +187,52 @@ void AILogger::Initialize() {
 void AILogger::EnsureOpen() {
   std::lock_guard<std::mutex> lock(mutex_);
 
-  if (initialized_ && log_file_.is_open()) {
+  if (initialized_ && !log_path_.empty()) {
     return;
   }
 
-  initialized_ = false;
-  log_file_.close();
+  std::string log_dir = ResolveLogDirectory();
+  CreateDirectoryRecursive(log_dir);
 
-  std::string primary = PrimaryLogPath();
-  CreateDirectoryRecursive(GetUserLogDirectory());
+  std::string primary = log_dir +
+#ifdef _WIN32
+      "\\ai_log.txt";
+#else
+      "/ai_log.txt";
+#endif
 
-  std::string log_path = primary;
-  log_file_.open(primary, std::ios::app);
-  if (!log_file_.is_open()) {
-    log_path = GetFallbackLogPath();
-    log_file_.open(log_path, std::ios::app);
-    if (!log_file_.is_open()) {
+  log_path_ = primary;
+  initialized_ = true;
+
+  // Probe write with startup line (fopen with share flags, not ofstream).
+  std::string startup = "[" + GetTimestamp() + "] [INFO ] AI logger opened: " +
+                        log_path_ + "\n";
+  if (!AppendLineToFile(log_path_, startup)) {
+    log_path_ = GetFallbackLogPath();
+    startup = "[" + GetTimestamp() + "] [INFO ] AI logger opened (fallback): " +
+              log_path_ + "\n";
+    if (!AppendLineToFile(log_path_, startup)) {
+      initialized_ = false;
+      log_path_.clear();
       std::cerr << "[AI-Mozc Logger] Failed to open log file: " << primary
-                << " and fallback: " << log_path << std::endl;
+                << " and fallback: " << log_path_ << std::endl;
       return;
     }
-    std::cerr << "[AI-Mozc Logger] Using fallback log: " << log_path << std::endl;
   }
 
-  ActiveLogPath() = log_path;
-  initialized_ = true;
-  std::string startup = "[" + GetTimestamp() + "] [INFO ] AI logger opened: " +
-                        log_path + "\n";
-  log_file_ << startup;
-  log_file_.flush();
+  WriteLogLocationMarker(log_path_);
 }
 
 std::string AILogger::GetLogPath() {
-  if (!ActiveLogPath().empty()) {
-    return ActiveLogPath();
+  if (!log_path_.empty()) {
+    return log_path_;
   }
-  return PrimaryLogPath();
+  return ResolveLogDirectory() +
+#ifdef _WIN32
+      "\\ai_log.txt";
+#else
+      "/ai_log.txt";
+#endif
 }
 
 void AILogger::Trace(const std::string& msg) {
@@ -224,7 +253,6 @@ void AILogger::Warn(const std::string& msg) {
 
 void AILogger::Error(const std::string& msg) {
   Log(LogLevel::ERROR, msg);
-  // Also output to stderr for visibility
   std::cerr << "[AI-Mozc ERROR] " << msg << std::endl;
 }
 
@@ -242,7 +270,7 @@ void AILogger::LogRequest(const std::string& prompt) {
 
   std::ostringstream oss;
   oss << "[AI REQUEST] " << prompt;
-  Log(LogLevel::TRACE, oss.str());
+  Log(LogLevel::DEBUG, oss.str());
 }
 
 void AILogger::LogResponse(const std::string& response) {
@@ -253,14 +281,11 @@ void AILogger::LogResponse(const std::string& response) {
 
   std::ostringstream oss;
   oss << "[AI RESPONSE] " << response;
-  Log(LogLevel::TRACE, oss.str());
+  Log(LogLevel::DEBUG, oss.str());
 }
 
 void AILogger::Flush() {
-  std::lock_guard<std::mutex> lock(mutex_);
-  if (log_file_.is_open()) {
-    log_file_.flush();
-  }
+  // Each line is flushed on write.
 }
 
 void AILogger::Log(LogLevel level, const std::string& msg) {
@@ -272,22 +297,17 @@ void AILogger::Log(LogLevel level, const std::string& msg) {
 
   std::lock_guard<std::mutex> lock(mutex_);
 
+  if (!initialized_ || log_path_.empty()) {
+    std::cerr << "[AI-Mozc] " << GetLevelString(level) << ": " << msg << std::endl;
+    return;
+  }
+
   std::ostringstream line;
   line << "[" << GetTimestamp() << "] "
        << "[" << GetLevelString(level) << "] "
        << msg << "\n";
-  const std::string line_str = line.str();
 
-  if (log_file_.is_open()) {
-    log_file_ << line_str;
-    if (level >= LogLevel::WARN) {
-      log_file_.flush();
-    }
-    return;
-  }
-
-  const std::string path = ActiveLogPath().empty() ? PrimaryLogPath() : ActiveLogPath();
-  if (!AppendLineToFile(path, line_str)) {
+  if (!AppendLineToFile(log_path_, line.str())) {
     std::cerr << "[AI-Mozc] " << GetLevelString(level) << ": " << msg << std::endl;
   }
 }
@@ -321,7 +341,6 @@ std::string AILogger::GetTimestamp() {
   return oss.str();
 }
 
-// ScopedTimer implementation
 ScopedTimer::ScopedTimer(const std::string& operation)
     : operation_(operation),
       start_(std::chrono::steady_clock::now()) {}
