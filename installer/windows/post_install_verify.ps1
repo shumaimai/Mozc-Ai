@@ -86,6 +86,32 @@ if (Test-Path $userConfig) {
     $lines += "WARN: ai_config.json not found (setup may have failed)"
 }
 
+$fixScript = $null
+if ($mozcDir) {
+    foreach ($subdir in @("documents", "")) {
+        $dir = if ($subdir) { Join-Path $mozcDir $subdir } else { $mozcDir }
+        $candidate = Join-Path $dir "fix_mozc_registry.ps1"
+        if (Test-Path $candidate) { $fixScript = $candidate; break }
+    }
+}
+if ($fixScript) {
+    Write-VerifyLog "Fixing Mozc TIP registry..."
+    & $fixScript -Quiet:$Quiet
+    try {
+        $tipPath = (Get-ItemProperty "HKLM:\SOFTWARE\Classes\CLSID\{10A67BC8-22FA-4A59-90DC-2546652C56BF}\InprocServer32").'(default)'
+        if ($tipPath -like "*Program Files\Mozc*") {
+            $lines += "OK: TIP registry points to $tipPath"
+        } else {
+            $lines += "FAIL: TIP registry still points to $tipPath"
+            $ok = $false
+        }
+    } catch {
+        $lines += "WARN: Could not read TIP registry: $_"
+    }
+} else {
+    $lines += "WARN: fix_mozc_registry.ps1 not found in install dir"
+}
+
 if ($ok) {
     $lines += ""
     $lines += "RESULT: PASS - Reboot PC, then verify ai_log.txt after typing in IME"

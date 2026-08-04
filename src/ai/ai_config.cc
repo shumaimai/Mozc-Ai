@@ -178,7 +178,7 @@ class SimpleJsonParser {
     // Parse cache config
     config.cache.ttl_seconds = GetInt(json, "cache_ttl_seconds", 60);
     config.cache.max_entries = GetInt(json, "cache_max_entries", 100);
-    config.cache.include_context_in_key = GetBool(json, "cache_include_context", true);
+    config.cache.include_context_in_key = GetBool(json, "cache_include_context", false);
 
     // Parse context config
     config.context.history_size = GetInt(json, "history_size", 5);
@@ -362,7 +362,7 @@ AIConfig AIConfigManager::GetDefaultConfig() {
   // Cache defaults
   config.cache.ttl_seconds = 60;
   config.cache.max_entries = 100;
-  config.cache.include_context_in_key = true;
+  config.cache.include_context_in_key = false;
 
   // Context defaults
   config.context.history_size = 5;

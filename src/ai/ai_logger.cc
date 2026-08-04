@@ -9,12 +9,15 @@
 #include <iomanip>
 #include <ctime>
 #include <cstdlib>
+#include <cstdio>
+#include <cerrno>
 #include <sys/stat.h>
 
 #ifdef _WIN32
 #include <windows.h>
 #include <shlobj.h>
 #include <direct.h>
+#include <share.h>
 #define MKDIR(path) _mkdir(path)
 // Undefine Windows macros that conflict with our code
 #undef ERROR
@@ -112,6 +115,50 @@ std::string GetUserLogDirectory() {
 #endif
 }
 
+std::string& ActiveLogPath() {
+  static std::string path;
+  return path;
+}
+
+std::string PrimaryLogPath() {
+  return GetUserLogDirectory() +
+#ifdef _WIN32
+      "\\ai_log.txt";
+#else
+      "/ai_log.txt";
+#endif
+}
+
+std::string GetFallbackLogPath() {
+#ifdef _WIN32
+  char temp_path[MAX_PATH] = {};
+  DWORD len = GetTempPathA(MAX_PATH, temp_path);
+  if (len == 0 || len >= MAX_PATH) {
+    return "ai_log.txt";
+  }
+  std::string dir = std::string(temp_path) + "MozcAI";
+  CreateDirectoryRecursive(dir);
+  return dir + "\\ai_log.txt";
+#else
+  return "/tmp/mozc_ai_log.txt";
+#endif
+}
+
+bool AppendLineToFile(const std::string& path, const std::string& line) {
+#ifdef _WIN32
+  FILE* file = _fsopen(path.c_str(), "a", _SH_DENYNO);
+#else
+  FILE* file = fopen(path.c_str(), "a");
+#endif
+  if (!file) {
+    return false;
+  }
+  fwrite(line.data(), 1, line.size(), file);
+  fflush(file);
+  fclose(file);
+  return true;
+}
+
 }  // namespace
 
 void AILogger::Initialize() {
@@ -121,41 +168,42 @@ void AILogger::Initialize() {
 void AILogger::EnsureOpen() {
   std::lock_guard<std::mutex> lock(mutex_);
 
-  if (initialized_) {
+  if (initialized_ && log_file_.is_open()) {
     return;
   }
 
-  std::string log_dir = GetUserLogDirectory();
-  CreateDirectoryRecursive(log_dir);
+  initialized_ = false;
+  log_file_.close();
 
-  std::string log_path = log_dir +
-#ifdef _WIN32
-      "\\ai_log.txt";
-#else
-      "/ai_log.txt";
-#endif
+  std::string primary = PrimaryLogPath();
+  CreateDirectoryRecursive(GetUserLogDirectory());
 
-  log_file_.open(log_path, std::ios::app);
-
-  if (log_file_.is_open()) {
-    initialized_ = true;
-    std::string startup = "[" + GetTimestamp() + "] [INFO ] AI logger opened: " +
-                          log_path + "\n";
-    log_file_ << startup;
-    log_file_.flush();
-  } else {
-    std::cerr << "[AI-Mozc Logger] Failed to open log file: " << log_path
-              << std::endl;
+  std::string log_path = primary;
+  log_file_.open(primary, std::ios::app);
+  if (!log_file_.is_open()) {
+    log_path = GetFallbackLogPath();
+    log_file_.open(log_path, std::ios::app);
+    if (!log_file_.is_open()) {
+      std::cerr << "[AI-Mozc Logger] Failed to open log file: " << primary
+                << " and fallback: " << log_path << std::endl;
+      return;
+    }
+    std::cerr << "[AI-Mozc Logger] Using fallback log: " << log_path << std::endl;
   }
+
+  ActiveLogPath() = log_path;
+  initialized_ = true;
+  std::string startup = "[" + GetTimestamp() + "] [INFO ] AI logger opened: " +
+                        log_path + "\n";
+  log_file_ << startup;
+  log_file_.flush();
 }
 
 std::string AILogger::GetLogPath() {
-  return GetUserLogDirectory() +
-#ifdef _WIN32
-      "\\ai_log.txt";
-#else
-      "/ai_log.txt";
-#endif
+  if (!ActiveLogPath().empty()) {
+    return ActiveLogPath();
+  }
+  return PrimaryLogPath();
 }
 
 void AILogger::Trace(const std::string& msg) {
@@ -224,23 +272,23 @@ void AILogger::Log(LogLevel level, const std::string& msg) {
 
   std::lock_guard<std::mutex> lock(mutex_);
 
-  if (!log_file_.is_open()) {
-    // Fallback to stderr
-    std::cerr << "[AI-Mozc] " << GetLevelString(level) << ": " << msg << std::endl;
-    return;
-  }
-
-  // Format: [TIMESTAMP] [LEVEL] message
   std::ostringstream line;
   line << "[" << GetTimestamp() << "] "
        << "[" << GetLevelString(level) << "] "
        << msg << "\n";
+  const std::string line_str = line.str();
 
-  log_file_ << line.str();
+  if (log_file_.is_open()) {
+    log_file_ << line_str;
+    if (level >= LogLevel::WARN) {
+      log_file_.flush();
+    }
+    return;
+  }
 
-  // Auto-flush for errors and warnings
-  if (level >= LogLevel::WARN) {
-    log_file_.flush();
+  const std::string path = ActiveLogPath().empty() ? PrimaryLogPath() : ActiveLogPath();
+  if (!AppendLineToFile(path, line_str)) {
+    std::cerr << "[AI-Mozc] " << GetLevelString(level) << ": " << msg << std::endl;
   }
 }
 

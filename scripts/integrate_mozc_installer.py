@@ -14,6 +14,7 @@ INSTALLER_ASSETS = (
     "setup_ai_mozc.ps1",
     "pre_install_cleanup.ps1",
     "post_install_verify.ps1",
+    "fix_mozc_registry.ps1",
     "VERIFY_INSTALL.txt",
 )
 
