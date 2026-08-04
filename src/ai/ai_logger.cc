@@ -11,6 +11,7 @@
 #include <cstdlib>
 #include <cstdio>
 #include <cerrno>
+#include <vector>
 #include <sys/stat.h>
 
 #ifdef _WIN32
@@ -123,12 +124,12 @@ std::string GetUserLogDirectory() {
 #endif
 }
 
-std::string GetFallbackLogPath() {
+std::string GetTempFallbackLogPath() {
 #ifdef _WIN32
   char temp_path[MAX_PATH] = {};
   DWORD len = GetTempPathA(MAX_PATH, temp_path);
   if (len == 0 || len >= MAX_PATH) {
-    return "ai_log.txt";
+    return "";
   }
   std::string dir = std::string(temp_path) + "MozcAI";
   CreateDirectoryRecursive(dir);
@@ -136,6 +137,31 @@ std::string GetFallbackLogPath() {
 #else
   return "/tmp/mozc_ai_log.txt";
 #endif
+}
+
+// Last-resort path that is easy to find in Explorer (user home).
+std::string GetHomeFallbackLogPath() {
+#ifdef _WIN32
+  const char* profile = std::getenv("USERPROFILE");
+  if (profile && profile[0] != '\0') {
+    return std::string(profile) + "\\mozc_ai_log.txt";
+  }
+  return "mozc_ai_log.txt";
+#else
+  const char* home = std::getenv("HOME");
+  if (home && home[0] != '\0') {
+    return std::string(home) + "/mozc_ai_log.txt";
+  }
+  return "/tmp/mozc_ai_log.txt";
+#endif
+}
+
+void EmitDebug(const std::string& msg) {
+#ifdef _WIN32
+  // Visible in Sysinternals DebugView (Capture Win32). Always available for IME.
+  OutputDebugStringA(("[AI-Mozc] " + msg + "\n").c_str());
+#endif
+  std::cerr << "[AI-Mozc] " << msg << std::endl;
 }
 
 bool AppendLineToFile(const std::string& path, const std::string& line) {
@@ -176,6 +202,18 @@ void WriteLogLocationMarker(const std::string& log_path) {
 #endif
   std::string content = "ai_log.txt path:\n" + log_path + "\n";
   AppendLineToFile(marker, content);
+
+  // Also drop a pointer next to ai_config.json when logging elsewhere.
+  std::string config_dir = ResolveLogDirectory();
+  if (!config_dir.empty() && config_dir != dir) {
+    std::string config_marker = config_dir +
+#ifdef _WIN32
+        "\\ai_log_location.txt";
+#else
+        "/ai_log_location.txt";
+#endif
+    AppendLineToFile(config_marker, content);
+  }
 }
 
 }  // namespace
@@ -194,33 +232,36 @@ void AILogger::EnsureOpen() {
   std::string log_dir = ResolveLogDirectory();
   CreateDirectoryRecursive(log_dir);
 
-  std::string primary = log_dir +
+  std::vector<std::string> candidates;
+  candidates.push_back(log_dir +
 #ifdef _WIN32
-      "\\ai_log.txt";
+                       "\\ai_log.txt"
 #else
-      "/ai_log.txt";
+                       "/ai_log.txt"
 #endif
+  );
+  std::string temp_path = GetTempFallbackLogPath();
+  if (!temp_path.empty()) {
+    candidates.push_back(temp_path);
+  }
+  candidates.push_back(GetHomeFallbackLogPath());
 
-  log_path_ = primary;
-  initialized_ = true;
-
-  // Probe write with startup line (fopen with share flags, not ofstream).
-  std::string startup = "[" + GetTimestamp() + "] [INFO ] AI logger opened: " +
-                        log_path_ + "\n";
-  if (!AppendLineToFile(log_path_, startup)) {
-    log_path_ = GetFallbackLogPath();
-    startup = "[" + GetTimestamp() + "] [INFO ] AI logger opened (fallback): " +
-              log_path_ + "\n";
-    if (!AppendLineToFile(log_path_, startup)) {
-      initialized_ = false;
-      log_path_.clear();
-      std::cerr << "[AI-Mozc Logger] Failed to open log file: " << primary
-                << " and fallback: " << log_path_ << std::endl;
+  std::string startup_prefix = "[" + GetTimestamp() + "] [INFO ] AI logger opened: ";
+  for (const auto& candidate : candidates) {
+    std::string startup = startup_prefix + candidate + "\n";
+    if (AppendLineToFile(candidate, startup)) {
+      log_path_ = candidate;
+      initialized_ = true;
+      WriteLogLocationMarker(log_path_);
+      EmitDebug("logger opened: " + log_path_);
       return;
     }
+    EmitDebug("logger open failed: " + candidate);
   }
 
-  WriteLogLocationMarker(log_path_);
+  initialized_ = false;
+  log_path_.clear();
+  EmitDebug("logger open failed for all candidates");
 }
 
 std::string AILogger::GetLogPath() {
@@ -253,7 +294,6 @@ void AILogger::Warn(const std::string& msg) {
 
 void AILogger::Error(const std::string& msg) {
   Log(LogLevel::ERROR, msg);
-  std::cerr << "[AI-Mozc ERROR] " << msg << std::endl;
 }
 
 void AILogger::Perf(const std::string& operation, int64_t elapsed_ms) {
@@ -268,9 +308,10 @@ void AILogger::LogRequest(const std::string& prompt) {
     return;
   }
 
+  // INFO so it appears with default log_level=info (was DEBUG before).
   std::ostringstream oss;
   oss << "[AI REQUEST] " << prompt;
-  Log(LogLevel::DEBUG, oss.str());
+  Log(LogLevel::INFO, oss.str());
 }
 
 void AILogger::LogResponse(const std::string& response) {
@@ -281,7 +322,7 @@ void AILogger::LogResponse(const std::string& response) {
 
   std::ostringstream oss;
   oss << "[AI RESPONSE] " << response;
-  Log(LogLevel::DEBUG, oss.str());
+  Log(LogLevel::INFO, oss.str());
 }
 
 void AILogger::Flush() {
@@ -295,20 +336,22 @@ void AILogger::Log(LogLevel level, const std::string& msg) {
     return;
   }
 
-  std::lock_guard<std::mutex> lock(mutex_);
-
-  if (!initialized_ || log_path_.empty()) {
-    std::cerr << "[AI-Mozc] " << GetLevelString(level) << ": " << msg << std::endl;
-    return;
-  }
-
   std::ostringstream line;
   line << "[" << GetTimestamp() << "] "
        << "[" << GetLevelString(level) << "] "
        << msg << "\n";
 
+  // Always mirror to DebugView on Windows (works even when file logging fails).
+  EmitDebug(GetLevelString(level) + std::string(": ") + msg);
+
+  std::lock_guard<std::mutex> lock(mutex_);
+
+  if (!initialized_ || log_path_.empty()) {
+    return;
+  }
+
   if (!AppendLineToFile(log_path_, line.str())) {
-    std::cerr << "[AI-Mozc] " << GetLevelString(level) << ": " << msg << std::endl;
+    EmitDebug("append failed to " + log_path_ + ": " + msg);
   }
 }
 
