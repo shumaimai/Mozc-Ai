@@ -18,6 +18,15 @@ function Write-SetupLog {
     }
 }
 
+function Invoke-RegistryFix {
+    param([string]$PreferredRoot = "")
+    $fixScript = Find-AIAssetPath -FileName "fix_mozc_registry.ps1" -PreferredRoot $PreferredRoot
+    if ($fixScript) {
+        Write-SetupLog "Fixing Mozc TIP registry path..."
+        & $fixScript -Quiet:$Quiet
+    }
+}
+
 function Find-AIAssetPath {
     param(
         [string]$FileName,
@@ -85,6 +94,8 @@ $markerFile = Join-Path $ConfigDir "install_ready.txt"
 ) | Set-Content -Path $markerFile -Encoding UTF8
 
 Write-SetupLog "User config path (used by mozc_server): $UserConfig"
+
+Invoke-RegistryFix -PreferredRoot $InstallDir
 
 if ($PullModel) {
     $ollama = Get-Command ollama -ErrorAction SilentlyContinue

@@ -5,7 +5,6 @@
 #define MOZC_AI_AI_LOGGER_H_
 
 #include <string>
-#include <fstream>
 #include <mutex>
 #include <chrono>
 
@@ -50,7 +49,7 @@ class AILogger {
   static std::string GetTimestamp();
 
   static std::mutex mutex_;
-  static std::ofstream log_file_;
+  static std::string log_path_;
   static bool initialized_;
 };
 

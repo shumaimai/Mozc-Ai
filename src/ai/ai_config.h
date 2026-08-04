@@ -62,7 +62,7 @@ struct TimeoutConfig {
 struct CacheConfig {
   int ttl_seconds = 60;
   int max_entries = 100;
-  bool include_context_in_key = true;
+  bool include_context_in_key = false;
 };
 
 // Context configuration

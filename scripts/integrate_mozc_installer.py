@@ -14,6 +14,7 @@ INSTALLER_ASSETS = (
     "setup_ai_mozc.ps1",
     "pre_install_cleanup.ps1",
     "post_install_verify.ps1",
+    "fix_mozc_registry.ps1",
     "VERIFY_INSTALL.txt",
 )
 
@@ -107,12 +108,49 @@ def patch_installer_programfiles64(mozc_src: Path, dry_run: bool) -> None:
         wxs_file.write_text(text, encoding="utf-8")
 
 
+def patch_installer_wxs_registry_fix(mozc_src: Path, dry_run: bool) -> None:
+    """Add fix_mozc_registry.ps1 to installers patched before this component existed."""
+    wxs_file = mozc_src / "win32" / "installer" / "installer_oss_64bit.wxs"
+    text = wxs_file.read_text(encoding="utf-8")
+
+    if 'Component Id="AIFixMozcRegistry"' in text:
+        print("installer_oss_64bit.wxs already has AIFixMozcRegistry; skipping")
+        return
+
+    if 'Component Id="AIPreInstallCleanup"' not in text:
+        print("installer_oss_64bit.wxs not AI-patched yet; registry fix added by full patch")
+        return
+
+    feature_marker = '      <ComponentRef Id="AIVerifyInstall" />'
+    feature_replacement = (
+        feature_marker + '\n      <ComponentRef Id="AIFixMozcRegistry" />'
+    )
+    if feature_marker not in text:
+        raise RuntimeError("Could not find AIVerifyInstall ComponentRef for registry fix upgrade")
+    text = text.replace(feature_marker, feature_replacement, 1)
+
+    component_marker = """          <Component Id="AIVerifyInstall">
+            <File Id="VERIFY_INSTALL.txt" Name="VERIFY_INSTALL.txt" DiskId="1" Checksum="yes" Vital="yes" Source="$(var.DocumentsDir)/VERIFY_INSTALL.txt" />
+          </Component>"""
+    component_replacement = component_marker + """
+          <Component Id="AIFixMozcRegistry">
+            <File Id="fix_mozc_registry.ps1" Name="fix_mozc_registry.ps1" DiskId="1" Checksum="yes" Vital="yes" Source="$(var.DocumentsDir)/fix_mozc_registry.ps1" />
+          </Component>"""
+    if component_marker not in text:
+        raise RuntimeError("Could not find AIVerifyInstall component for registry fix upgrade")
+    text = text.replace(component_marker, component_replacement, 1)
+
+    print(f"patch {wxs_file} (AIFixMozcRegistry upgrade)")
+    if not dry_run:
+        wxs_file.write_text(text, encoding="utf-8")
+
+
 def patch_installer_wxs(mozc_src: Path, dry_run: bool) -> None:
     wxs_file = mozc_src / "win32" / "installer" / "installer_oss_64bit.wxs"
     text = wxs_file.read_text(encoding="utf-8")
 
     if 'Component Id="AIPreInstallCleanup"' in text:
-        print("installer_oss_64bit.wxs already patched; skipping")
+        patch_installer_wxs_registry_fix(mozc_src, dry_run)
         return
 
     feature_marker = '      <ComponentRef Id="CreditsEn" />'
@@ -122,7 +160,8 @@ def patch_installer_wxs(mozc_src: Path, dry_run: bool) -> None:
         '      <ComponentRef Id="AISetupScript" />\n'
         '      <ComponentRef Id="AIPreInstallCleanup" />\n'
         '      <ComponentRef Id="AIPostInstallVerify" />\n'
-        '      <ComponentRef Id="AIVerifyInstall" />'
+        '      <ComponentRef Id="AIVerifyInstall" />\n'
+        '      <ComponentRef Id="AIFixMozcRegistry" />'
     )
     if feature_marker not in text:
         raise RuntimeError("Could not find Feature ComponentRef marker")
@@ -146,6 +185,9 @@ def patch_installer_wxs(mozc_src: Path, dry_run: bool) -> None:
           </Component>
           <Component Id="AIVerifyInstall">
             <File Id="VERIFY_INSTALL.txt" Name="VERIFY_INSTALL.txt" DiskId="1" Checksum="yes" Vital="yes" Source="$(var.DocumentsDir)/VERIFY_INSTALL.txt" />
+          </Component>
+          <Component Id="AIFixMozcRegistry">
+            <File Id="fix_mozc_registry.ps1" Name="fix_mozc_registry.ps1" DiskId="1" Checksum="yes" Vital="yes" Source="$(var.DocumentsDir)/fix_mozc_registry.ps1" />
           </Component>"""
     if component_marker not in text:
         raise RuntimeError("Could not find CreditsEn component marker")
