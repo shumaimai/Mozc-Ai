@@ -113,12 +113,27 @@ jobs:
 
       - name: Verify AI binary before packaging
         shell: pwsh
+        working-directory: .mozc-build/mozc/src
         run: |
-          $exe = ".mozc-build/mozc/src/bazel-bin/server/mozc_server.exe"
-          if (-not (Test-Path $exe)) {
-            Write-Error "mozc_server.exe not found at $exe"
+          # mozc_server_win wraps //server:mozc_server.exe (not bazel-bin/server/mozc_server.exe directly)
+          $exe = $null
+          $cqueryOut = bazelisk cquery "//server:mozc_server_win" --output=files 2>&1
+          if ($LASTEXITCODE -eq 0) {
+            $exe = ($cqueryOut | Where-Object { $_ -match '\.exe$' } | Select-Object -First 1)
+            if ($exe) { $exe = $exe.Trim() }
+          }
+          if (-not $exe -or -not (Test-Path $exe)) {
+            $found = Get-ChildItem "bazel-bin/server" -Filter "*.exe" -Recurse -ErrorAction SilentlyContinue |
+              Where-Object { $_.Name -match 'mozc_server' } |
+              Select-Object -First 1
+            if ($found) { $exe = $found.FullName }
+          }
+          if (-not $exe -or -not (Test-Path $exe)) {
+            Write-Error "mozc_server.exe not found (cquery: $($cqueryOut -join '; '))"
+            Get-ChildItem "bazel-bin/server" -ErrorAction SilentlyContinue | Format-Table
             exit 1
           }
+          Write-Host "Found binary: $exe"
           $bytes = [System.IO.File]::ReadAllBytes($exe)
           $text = [System.Text.Encoding]::ASCII.GetString($bytes)
           if ($text -notmatch "AIRewriter") {
