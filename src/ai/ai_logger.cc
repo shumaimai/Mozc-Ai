@@ -17,6 +17,7 @@
 #ifdef _WIN32
 #include <windows.h>
 #include <shlobj.h>
+#include <knownfolders.h>
 #include <direct.h>
 #include <share.h>
 #define MKDIR(path) _mkdir(path)
@@ -98,15 +99,39 @@ std::string GetParentPath(const std::string& path) {
   return path.substr(0, pos);
 }
 
-std::string GetUserLogDirectory() {
+// Mozc Windows server runs at Low Integrity and can only write LocalLow.
+// Do NOT use %LOCALAPPDATA%\Google\Mozc (Medium) for log writes.
+std::string GetWritableLogDirectory() {
 #ifdef _WIN32
-  char path[MAX_PATH];
+  PWSTR wpath = nullptr;
+  if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppDataLow, 0, nullptr,
+                                      &wpath)) &&
+      wpath != nullptr) {
+    char narrow[MAX_PATH * 4] = {};
+    const int n = WideCharToMultiByte(CP_UTF8, 0, wpath, -1, narrow,
+                                      static_cast<int>(sizeof(narrow)), nullptr,
+                                      nullptr);
+    CoTaskMemFree(wpath);
+    if (n > 0 && narrow[0] != '\0') {
+      return std::string(narrow) + "\\Mozc";
+    }
+  }
+
+  // Fallback: %LOCALAPPDATA% is ...\AppData\Local → sibling LocalLow.
+  char path[MAX_PATH] = {};
   if (SUCCEEDED(SHGetFolderPathA(NULL, CSIDL_LOCAL_APPDATA, NULL, 0, path))) {
-    return std::string(path) + "\\Google\\Mozc";
+    std::string local = path;
+    const std::string suffix = "\\Local";
+    if (local.size() >= suffix.size() &&
+        local.compare(local.size() - suffix.size(), suffix.size(), suffix) ==
+            0) {
+      return local + "Low\\Mozc";
+    }
+    return local + "Low\\Mozc";
   }
   const char* localappdata = std::getenv("LOCALAPPDATA");
   if (localappdata) {
-    return std::string(localappdata) + "\\Google\\Mozc";
+    return std::string(localappdata) + "Low\\Mozc";
   }
   return ".";
 #else
@@ -124,49 +149,6 @@ std::string GetUserLogDirectory() {
 #endif
 }
 
-// Easy-to-find shared path (no AppData guesswork).
-std::string GetPublicMirrorLogPath() {
-#ifdef _WIN32
-  std::string dir = "C:\\Users\\Public\\MozcAI";
-  CreateDirectoryRecursive(dir);
-  return dir + "\\ai_log.txt";
-#else
-  return "/tmp/mozc_ai_public_log.txt";
-#endif
-}
-
-std::string GetTempFallbackLogPath() {
-#ifdef _WIN32
-  char temp_path[MAX_PATH] = {};
-  DWORD len = GetTempPathA(MAX_PATH, temp_path);
-  if (len == 0 || len >= MAX_PATH) {
-    return "";
-  }
-  std::string dir = std::string(temp_path) + "MozcAI";
-  CreateDirectoryRecursive(dir);
-  return dir + "\\ai_log.txt";
-#else
-  return "/tmp/mozc_ai_log.txt";
-#endif
-}
-
-// Last-resort path that is easy to find in Explorer (user home).
-std::string GetHomeFallbackLogPath() {
-#ifdef _WIN32
-  const char* profile = std::getenv("USERPROFILE");
-  if (profile && profile[0] != '\0') {
-    return std::string(profile) + "\\mozc_ai_log.txt";
-  }
-  return "mozc_ai_log.txt";
-#else
-  const char* home = std::getenv("HOME");
-  if (home && home[0] != '\0') {
-    return std::string(home) + "/mozc_ai_log.txt";
-  }
-  return "/tmp/mozc_ai_log.txt";
-#endif
-}
-
 std::string FormatTimestamp() {
   auto now = std::chrono::system_clock::now();
   auto time = std::chrono::system_clock::to_time_t(now);
@@ -181,7 +163,7 @@ std::string FormatTimestamp() {
 
 void EmitDebug(const std::string& msg) {
 #ifdef _WIN32
-  // Visible in Sysinternals DebugView (Capture Win32 / Capture Global Win32).
+  // Same-session Capture Win32 is enough (mozc_server is not Session 0).
   OutputDebugStringA(("[AI-Mozc] " + msg + "\n").c_str());
 #endif
   std::cerr << "[AI-Mozc] " << msg << std::endl;
@@ -218,13 +200,10 @@ bool WriteFileOverwrite(const std::string& path, const std::string& content) {
 }
 
 std::string ResolveLogDirectory() {
-  // Prefer the same directory as ai_config.json (known to work for this user).
-  std::string config_path = AIConfigManager::Instance().GetConfigPath();
-  std::string config_dir = GetParentPath(config_path);
-  if (!config_dir.empty()) {
-    return config_dir;
-  }
-  return GetUserLogDirectory();
+  // IMPORTANT: On Windows, Mozc launches mozc_server at Low Integrity.
+  // Writing to Medium paths (%LOCALAPPDATA%\Google\Mozc, Public, home, Temp)
+  // fails silently. Use the same LocalLow\Mozc directory Mozc itself uses.
+  return GetWritableLogDirectory();
 }
 
 void WriteAliveBeacon(const std::string& log_path) {
@@ -232,57 +211,43 @@ void WriteAliveBeacon(const std::string& log_path) {
   body << "AI Mozc logger is alive\n"
        << "timestamp: " << FormatTimestamp() << "\n"
        << "log_path: " << log_path << "\n"
-       << "public_mirror: " << GetPublicMirrorLogPath() << "\n"
-       << "hint: open DebugView as Admin, enable Capture Win32 + Capture Global Win32\n";
+       << "note: mozc_server is Low Integrity; logs live under LocalLow\\Mozc\n"
+       << "hint: DebugView Capture Win32; filter AI-Mozc\n";
 
   const std::string content = body.str();
-  std::vector<std::string> beacons;
-
-  std::string config_dir = ResolveLogDirectory();
-  if (!config_dir.empty()) {
-    CreateDirectoryRecursive(config_dir);
-#ifdef _WIN32
-    beacons.push_back(config_dir + "\\ai_alive.txt");
-#else
-    beacons.push_back(config_dir + "/ai_alive.txt");
-#endif
+  std::string log_dir = GetParentPath(log_path);
+  if (log_dir.empty()) {
+    log_dir = ResolveLogDirectory();
   }
-
+  CreateDirectoryRecursive(log_dir);
 #ifdef _WIN32
-  CreateDirectoryRecursive("C:\\Users\\Public\\MozcAI");
-  beacons.push_back("C:\\Users\\Public\\MozcAI\\ai_alive.txt");
+  const std::string beacon = log_dir + "\\ai_alive.txt";
 #else
-  beacons.push_back("/tmp/mozc_ai_alive.txt");
+  const std::string beacon = log_dir + "/ai_alive.txt";
 #endif
-
-  for (const auto& path : beacons) {
-    if (WriteFileOverwrite(path, content)) {
-      EmitDebug("alive beacon: " + path);
-    }
+  if (WriteFileOverwrite(beacon, content)) {
+    EmitDebug("alive beacon: " + beacon);
   }
 }
 
 void WriteLogLocationMarker(const std::string& log_path) {
-  std::string content = "ai_log.txt path:\n" + log_path + "\n"
-                        "public_mirror:\n" + GetPublicMirrorLogPath() + "\n";
+  std::string content =
+      "ai_log.txt path:\n" + log_path +
+      "\n"
+      "note: look under %LOCALAPPDATA%Low\\Mozc (not Local\\Google\\Mozc)\n";
 
-  auto write_marker = [&](const std::string& dir) {
-    if (dir.empty()) return;
-    CreateDirectoryRecursive(dir);
-    std::string marker = dir +
+  std::string dir = GetParentPath(log_path);
+  if (dir.empty()) {
+    dir = ResolveLogDirectory();
+  }
+  CreateDirectoryRecursive(dir);
+  std::string marker = dir +
 #ifdef _WIN32
-        "\\ai_log_location.txt";
+      "\\ai_log_location.txt";
 #else
-        "/ai_log_location.txt";
+      "/ai_log_location.txt";
 #endif
-    WriteFileOverwrite(marker, content);
-  };
-
-  write_marker(GetParentPath(log_path));
-  write_marker(ResolveLogDirectory());
-#ifdef _WIN32
-  write_marker("C:\\Users\\Public\\MozcAI");
-#endif
+  WriteFileOverwrite(marker, content);
 }
 
 }  // namespace
@@ -309,12 +274,6 @@ void AILogger::EnsureOpen() {
                        "/ai_log.txt"
 #endif
   );
-  std::string temp_path = GetTempFallbackLogPath();
-  if (!temp_path.empty()) {
-    candidates.push_back(temp_path);
-  }
-  candidates.push_back(GetHomeFallbackLogPath());
-  candidates.push_back(GetPublicMirrorLogPath());
 
   std::string startup_prefix = "[" + FormatTimestamp() + "] [INFO ] AI logger opened: ";
   for (const auto& candidate : candidates) {
@@ -324,11 +283,6 @@ void AILogger::EnsureOpen() {
       initialized_ = true;
       WriteLogLocationMarker(log_path_);
       WriteAliveBeacon(log_path_);
-      // Always also seed the public mirror when primary is elsewhere.
-      std::string mirror = GetPublicMirrorLogPath();
-      if (mirror != log_path_) {
-        AppendLineToFile(mirror, startup);
-      }
       EmitDebug("logger opened: " + log_path_);
       return;
     }
@@ -423,16 +377,12 @@ void AILogger::Log(LogLevel level, const std::string& msg) {
 
   std::lock_guard<std::mutex> lock(mutex_);
 
-  if (initialized_ && !log_path_.empty()) {
-    if (!AppendLineToFile(log_path_, line.str())) {
-      EmitDebug("append failed to " + log_path_ + ": " + msg);
-    }
+  if (!initialized_ || log_path_.empty()) {
+    return;
   }
 
-  // Always tee to the public mirror so there is one known Explorer path.
-  std::string mirror = GetPublicMirrorLogPath();
-  if (mirror != log_path_) {
-    AppendLineToFile(mirror, line.str());
+  if (!AppendLineToFile(log_path_, line.str())) {
+    EmitDebug("append failed to " + log_path_ + ": " + msg);
   }
 }
 

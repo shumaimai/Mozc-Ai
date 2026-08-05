@@ -154,5 +154,5 @@ if (-not $DryRun) {
     Write-Host "  2. Add Japanese IME in Windows Settings if needed"
     Write-Host "  3. Install Ollama: https://ollama.ai"
     Write-Host "  4. Pull model: ollama pull gemma3:1b"
-    Write-Host "  5. Check log: %LOCALAPPDATA%\Google\Mozc\ai_log.txt"
+    Write-Host "  5. Check log: %LOCALAPPDATA%Low\Mozc\ai_log.txt"
 }

@@ -41,10 +41,18 @@ Mozc AI インストール確認（GUI のみ・コマンド不要）
 
 ■ 4. ログ確認（再起動後に IME で入力してから）
 
-  同じフォルダの ai_log.txt を開く。
+  Win + R → 次を貼って Enter:
+
+    %LOCALAPPDATA%Low\Mozc
+
+  ai_log.txt / ai_alive.txt を開く。
+  ※ mozc_server は Low Integrity のため、ログは LocalLow に出ます。
+    （%LOCALAPPDATA%\Google\Mozc は設定用。ここにはログは書けません）
+
   「AIRewriter constructed」または「AIRewriter active」が出ていれば AI 動作中。
 
 ■ 5. DeepSeek 設定
 
-  同じフォルダの ai_config.json で backend_type が deepseek であること。
+  Win + R → %LOCALAPPDATA%\Google\Mozc
+  ai_config.json で backend_type が deepseek であること。
   環境変数 DEEPSEEK_API_KEY をユーザー環境変数に設定済みであること。
