@@ -2,7 +2,7 @@
 
 Mozc（Google日本語入力）にローカルAI（Ollama）を統合し、文脈に基づいた変換候補を追加するIME。
 
-**[📖 詳細なセットアップガイド（Getting Started）](docs/GETTING_STARTED.md)**
+**[ 詳細なセットアップガイド（Getting Started）](docs/GETTING_STARTED.md)**
 
 ## 最重要設計原則
 
