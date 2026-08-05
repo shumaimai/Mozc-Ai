@@ -124,6 +124,17 @@ std::string GetUserLogDirectory() {
 #endif
 }
 
+// Easy-to-find shared path (no AppData guesswork).
+std::string GetPublicMirrorLogPath() {
+#ifdef _WIN32
+  std::string dir = "C:\\Users\\Public\\MozcAI";
+  CreateDirectoryRecursive(dir);
+  return dir + "\\ai_log.txt";
+#else
+  return "/tmp/mozc_ai_public_log.txt";
+#endif
+}
+
 std::string GetTempFallbackLogPath() {
 #ifdef _WIN32
   char temp_path[MAX_PATH] = {};
@@ -156,9 +167,21 @@ std::string GetHomeFallbackLogPath() {
 #endif
 }
 
+std::string FormatTimestamp() {
+  auto now = std::chrono::system_clock::now();
+  auto time = std::chrono::system_clock::to_time_t(now);
+  auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+      now.time_since_epoch()) % 1000;
+
+  std::ostringstream oss;
+  oss << std::put_time(std::localtime(&time), "%Y-%m-%d %H:%M:%S")
+      << "." << std::setfill('0') << std::setw(3) << ms.count();
+  return oss.str();
+}
+
 void EmitDebug(const std::string& msg) {
 #ifdef _WIN32
-  // Visible in Sysinternals DebugView (Capture Win32). Always available for IME.
+  // Visible in Sysinternals DebugView (Capture Win32 / Capture Global Win32).
   OutputDebugStringA(("[AI-Mozc] " + msg + "\n").c_str());
 #endif
   std::cerr << "[AI-Mozc] " << msg << std::endl;
@@ -179,6 +202,21 @@ bool AppendLineToFile(const std::string& path, const std::string& line) {
   return true;
 }
 
+bool WriteFileOverwrite(const std::string& path, const std::string& content) {
+#ifdef _WIN32
+  FILE* file = _fsopen(path.c_str(), "w", _SH_DENYNO);
+#else
+  FILE* file = fopen(path.c_str(), "w");
+#endif
+  if (!file) {
+    return false;
+  }
+  fwrite(content.data(), 1, content.size(), file);
+  fflush(file);
+  fclose(file);
+  return true;
+}
+
 std::string ResolveLogDirectory() {
   // Prefer the same directory as ai_config.json (known to work for this user).
   std::string config_path = AIConfigManager::Instance().GetConfigPath();
@@ -189,31 +227,62 @@ std::string ResolveLogDirectory() {
   return GetUserLogDirectory();
 }
 
-void WriteLogLocationMarker(const std::string& log_path) {
-  std::string dir = GetParentPath(log_path);
-  if (dir.empty()) {
-    return;
-  }
-  std::string marker = dir +
-#ifdef _WIN32
-      "\\ai_log_location.txt";
-#else
-      "/ai_log_location.txt";
-#endif
-  std::string content = "ai_log.txt path:\n" + log_path + "\n";
-  AppendLineToFile(marker, content);
+void WriteAliveBeacon(const std::string& log_path) {
+  std::ostringstream body;
+  body << "AI Mozc logger is alive\n"
+       << "timestamp: " << FormatTimestamp() << "\n"
+       << "log_path: " << log_path << "\n"
+       << "public_mirror: " << GetPublicMirrorLogPath() << "\n"
+       << "hint: open DebugView as Admin, enable Capture Win32 + Capture Global Win32\n";
 
-  // Also drop a pointer next to ai_config.json when logging elsewhere.
+  const std::string content = body.str();
+  std::vector<std::string> beacons;
+
   std::string config_dir = ResolveLogDirectory();
-  if (!config_dir.empty() && config_dir != dir) {
-    std::string config_marker = config_dir +
+  if (!config_dir.empty()) {
+    CreateDirectoryRecursive(config_dir);
+#ifdef _WIN32
+    beacons.push_back(config_dir + "\\ai_alive.txt");
+#else
+    beacons.push_back(config_dir + "/ai_alive.txt");
+#endif
+  }
+
+#ifdef _WIN32
+  CreateDirectoryRecursive("C:\\Users\\Public\\MozcAI");
+  beacons.push_back("C:\\Users\\Public\\MozcAI\\ai_alive.txt");
+#else
+  beacons.push_back("/tmp/mozc_ai_alive.txt");
+#endif
+
+  for (const auto& path : beacons) {
+    if (WriteFileOverwrite(path, content)) {
+      EmitDebug("alive beacon: " + path);
+    }
+  }
+}
+
+void WriteLogLocationMarker(const std::string& log_path) {
+  std::string content = "ai_log.txt path:\n" + log_path + "\n"
+                        "public_mirror:\n" + GetPublicMirrorLogPath() + "\n";
+
+  auto write_marker = [&](const std::string& dir) {
+    if (dir.empty()) return;
+    CreateDirectoryRecursive(dir);
+    std::string marker = dir +
 #ifdef _WIN32
         "\\ai_log_location.txt";
 #else
         "/ai_log_location.txt";
 #endif
-    AppendLineToFile(config_marker, content);
-  }
+    WriteFileOverwrite(marker, content);
+  };
+
+  write_marker(GetParentPath(log_path));
+  write_marker(ResolveLogDirectory());
+#ifdef _WIN32
+  write_marker("C:\\Users\\Public\\MozcAI");
+#endif
 }
 
 }  // namespace
@@ -245,14 +314,21 @@ void AILogger::EnsureOpen() {
     candidates.push_back(temp_path);
   }
   candidates.push_back(GetHomeFallbackLogPath());
+  candidates.push_back(GetPublicMirrorLogPath());
 
-  std::string startup_prefix = "[" + GetTimestamp() + "] [INFO ] AI logger opened: ";
+  std::string startup_prefix = "[" + FormatTimestamp() + "] [INFO ] AI logger opened: ";
   for (const auto& candidate : candidates) {
     std::string startup = startup_prefix + candidate + "\n";
     if (AppendLineToFile(candidate, startup)) {
       log_path_ = candidate;
       initialized_ = true;
       WriteLogLocationMarker(log_path_);
+      WriteAliveBeacon(log_path_);
+      // Always also seed the public mirror when primary is elsewhere.
+      std::string mirror = GetPublicMirrorLogPath();
+      if (mirror != log_path_) {
+        AppendLineToFile(mirror, startup);
+      }
       EmitDebug("logger opened: " + log_path_);
       return;
     }
@@ -261,6 +337,7 @@ void AILogger::EnsureOpen() {
 
   initialized_ = false;
   log_path_.clear();
+  WriteAliveBeacon("(none)");
   EmitDebug("logger open failed for all candidates");
 }
 
@@ -337,7 +414,7 @@ void AILogger::Log(LogLevel level, const std::string& msg) {
   }
 
   std::ostringstream line;
-  line << "[" << GetTimestamp() << "] "
+  line << "[" << FormatTimestamp() << "] "
        << "[" << GetLevelString(level) << "] "
        << msg << "\n";
 
@@ -346,12 +423,16 @@ void AILogger::Log(LogLevel level, const std::string& msg) {
 
   std::lock_guard<std::mutex> lock(mutex_);
 
-  if (!initialized_ || log_path_.empty()) {
-    return;
+  if (initialized_ && !log_path_.empty()) {
+    if (!AppendLineToFile(log_path_, line.str())) {
+      EmitDebug("append failed to " + log_path_ + ": " + msg);
+    }
   }
 
-  if (!AppendLineToFile(log_path_, line.str())) {
-    EmitDebug("append failed to " + log_path_ + ": " + msg);
+  // Always tee to the public mirror so there is one known Explorer path.
+  std::string mirror = GetPublicMirrorLogPath();
+  if (mirror != log_path_) {
+    AppendLineToFile(mirror, line.str());
   }
 }
 
@@ -372,16 +453,7 @@ std::string AILogger::GetLevelString(LogLevel level) {
 }
 
 std::string AILogger::GetTimestamp() {
-  auto now = std::chrono::system_clock::now();
-  auto time = std::chrono::system_clock::to_time_t(now);
-  auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-      now.time_since_epoch()) % 1000;
-
-  std::ostringstream oss;
-  oss << std::put_time(std::localtime(&time), "%Y-%m-%d %H:%M:%S")
-      << "." << std::setfill('0') << std::setw(3) << ms.count();
-
-  return oss.str();
+  return FormatTimestamp();
 }
 
 ScopedTimer::ScopedTimer(const std::string& operation)

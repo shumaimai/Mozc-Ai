@@ -14,7 +14,7 @@
   "cache_include_context": false,
   "history_size": 5,
   "log_level": "info",
-  "log_ai_communication": false,
+  "log_ai_communication": true,
   "disable_ai": false,
   "use_mock": false
 }
