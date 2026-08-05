@@ -150,9 +150,12 @@ if (-not $DryRun) {
     Write-Host "  $Dest"
     Write-Host ""
     Write-Host "Install:" -ForegroundColor Yellow
-    Write-Host "  1. Run MozcAI64.msi as Administrator"
-    Write-Host "  2. Add Japanese IME in Windows Settings if needed"
-    Write-Host "  3. Install Ollama: https://ollama.ai"
-    Write-Host "  4. Pull model: ollama pull gemma3:1b"
-    Write-Host "  5. Check log: %LOCALAPPDATA%Low\Mozc\ai_log.txt"
+    Write-Host "  # IMPORTANT: plain double-click MSI will NOT replace mozc_server.exe"
+    Write-Host "  # (same Mozc FileVersion → Windows Installer skips the file)."
+    Write-Host "  # Use elevated PowerShell:"
+    Write-Host "  .\scripts\install_msi.ps1 -MsiPath `"$Dest`""
+    Write-Host "  # or nuclear option:"
+    Write-Host "  .\scripts\install_msi.ps1 -MsiPath `"$Dest`" -UninstallFirst"
+    Write-Host "  2. Reboot"
+    Write-Host "  3. Check log: %LOCALAPPDATA%Low\Mozc\ai_log.txt"
 }

@@ -12,6 +12,17 @@ Mozc AI インストール確認（GUI のみ・コマンド不要）
   手動でのファイル削除やサーバー再起動は不要です。
   インストール後に PC を再起動してから、下記を確認してください。
 
+■ インストール時の注意（重要）
+
+  MozcAI64.msi を普通にダブルクリックすると、mozc_server.exe が
+  古い日付のまま残ることがあります（FileVersion が同じため MSI が上書きしない）。
+
+  管理者 PowerShell で必ずこう入れてください:
+
+    .\scripts\install_msi.ps1
+    # それでも古い場合:
+    .\scripts\install_msi.ps1 -UninstallFirst
+
 ■ 1. 正しいインストール先を確認
 
   Win + R キー → 次を貼って Enter:
@@ -19,6 +30,7 @@ Mozc AI インストール確認（GUI のみ・コマンド不要）
     C:\Program Files\Mozc
 
   mozc_server.exe が存在すること。
+  タスクマネージャー等で「更新日時が今日」であることを確認。
   ※ 「Program Files (x86)\Mozc」にあるのは古い版です。
     AI 版は「Program Files\Mozc」（(x86) なし）に入ります。
 
