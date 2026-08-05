@@ -11,11 +11,13 @@
 #include <cstdlib>
 #include <cstdio>
 #include <cerrno>
+#include <vector>
 #include <sys/stat.h>
 
 #ifdef _WIN32
 #include <windows.h>
 #include <shlobj.h>
+#include <knownfolders.h>
 #include <direct.h>
 #include <share.h>
 #define MKDIR(path) _mkdir(path)
@@ -97,15 +99,39 @@ std::string GetParentPath(const std::string& path) {
   return path.substr(0, pos);
 }
 
-std::string GetUserLogDirectory() {
+// Mozc Windows server runs at Low Integrity and can only write LocalLow.
+// Do NOT use %LOCALAPPDATA%\Google\Mozc (Medium) for log writes.
+std::string GetWritableLogDirectory() {
 #ifdef _WIN32
-  char path[MAX_PATH];
+  PWSTR wpath = nullptr;
+  if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppDataLow, 0, nullptr,
+                                      &wpath)) &&
+      wpath != nullptr) {
+    char narrow[MAX_PATH * 4] = {};
+    const int n = WideCharToMultiByte(CP_UTF8, 0, wpath, -1, narrow,
+                                      static_cast<int>(sizeof(narrow)), nullptr,
+                                      nullptr);
+    CoTaskMemFree(wpath);
+    if (n > 0 && narrow[0] != '\0') {
+      return std::string(narrow) + "\\Mozc";
+    }
+  }
+
+  // Fallback: %LOCALAPPDATA% is ...\AppData\Local → sibling LocalLow.
+  char path[MAX_PATH] = {};
   if (SUCCEEDED(SHGetFolderPathA(NULL, CSIDL_LOCAL_APPDATA, NULL, 0, path))) {
-    return std::string(path) + "\\Google\\Mozc";
+    std::string local = path;
+    const std::string suffix = "\\Local";
+    if (local.size() >= suffix.size() &&
+        local.compare(local.size() - suffix.size(), suffix.size(), suffix) ==
+            0) {
+      return local + "Low\\Mozc";
+    }
+    return local + "Low\\Mozc";
   }
   const char* localappdata = std::getenv("LOCALAPPDATA");
   if (localappdata) {
-    return std::string(localappdata) + "\\Google\\Mozc";
+    return std::string(localappdata) + "Low\\Mozc";
   }
   return ".";
 #else
@@ -123,19 +149,24 @@ std::string GetUserLogDirectory() {
 #endif
 }
 
-std::string GetFallbackLogPath() {
+std::string FormatTimestamp() {
+  auto now = std::chrono::system_clock::now();
+  auto time = std::chrono::system_clock::to_time_t(now);
+  auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+      now.time_since_epoch()) % 1000;
+
+  std::ostringstream oss;
+  oss << std::put_time(std::localtime(&time), "%Y-%m-%d %H:%M:%S")
+      << "." << std::setfill('0') << std::setw(3) << ms.count();
+  return oss.str();
+}
+
+void EmitDebug(const std::string& msg) {
 #ifdef _WIN32
-  char temp_path[MAX_PATH] = {};
-  DWORD len = GetTempPathA(MAX_PATH, temp_path);
-  if (len == 0 || len >= MAX_PATH) {
-    return "ai_log.txt";
-  }
-  std::string dir = std::string(temp_path) + "MozcAI";
-  CreateDirectoryRecursive(dir);
-  return dir + "\\ai_log.txt";
-#else
-  return "/tmp/mozc_ai_log.txt";
+  // Same-session Capture Win32 is enough (mozc_server is not Session 0).
+  OutputDebugStringA(("[AI-Mozc] " + msg + "\n").c_str());
 #endif
+  std::cerr << "[AI-Mozc] " << msg << std::endl;
 }
 
 bool AppendLineToFile(const std::string& path, const std::string& line) {
@@ -153,29 +184,70 @@ bool AppendLineToFile(const std::string& path, const std::string& line) {
   return true;
 }
 
-std::string ResolveLogDirectory() {
-  // Prefer the same directory as ai_config.json (known to work for this user).
-  std::string config_path = AIConfigManager::Instance().GetConfigPath();
-  std::string config_dir = GetParentPath(config_path);
-  if (!config_dir.empty()) {
-    return config_dir;
+bool WriteFileOverwrite(const std::string& path, const std::string& content) {
+#ifdef _WIN32
+  FILE* file = _fsopen(path.c_str(), "w", _SH_DENYNO);
+#else
+  FILE* file = fopen(path.c_str(), "w");
+#endif
+  if (!file) {
+    return false;
   }
-  return GetUserLogDirectory();
+  fwrite(content.data(), 1, content.size(), file);
+  fflush(file);
+  fclose(file);
+  return true;
+}
+
+std::string ResolveLogDirectory() {
+  // IMPORTANT: On Windows, Mozc launches mozc_server at Low Integrity.
+  // Writing to Medium paths (%LOCALAPPDATA%\Google\Mozc, Public, home, Temp)
+  // fails silently. Use the same LocalLow\Mozc directory Mozc itself uses.
+  return GetWritableLogDirectory();
+}
+
+void WriteAliveBeacon(const std::string& log_path) {
+  std::ostringstream body;
+  body << "AI Mozc logger is alive\n"
+       << "timestamp: " << FormatTimestamp() << "\n"
+       << "log_path: " << log_path << "\n"
+       << "note: mozc_server is Low Integrity; logs live under LocalLow\\Mozc\n"
+       << "hint: DebugView Capture Win32; filter AI-Mozc\n";
+
+  const std::string content = body.str();
+  std::string log_dir = GetParentPath(log_path);
+  if (log_dir.empty()) {
+    log_dir = ResolveLogDirectory();
+  }
+  CreateDirectoryRecursive(log_dir);
+#ifdef _WIN32
+  const std::string beacon = log_dir + "\\ai_alive.txt";
+#else
+  const std::string beacon = log_dir + "/ai_alive.txt";
+#endif
+  if (WriteFileOverwrite(beacon, content)) {
+    EmitDebug("alive beacon: " + beacon);
+  }
 }
 
 void WriteLogLocationMarker(const std::string& log_path) {
+  std::string content =
+      "ai_log.txt path:\n" + log_path +
+      "\n"
+      "note: look under %LOCALAPPDATA%Low\\Mozc (not Local\\Google\\Mozc)\n";
+
   std::string dir = GetParentPath(log_path);
   if (dir.empty()) {
-    return;
+    dir = ResolveLogDirectory();
   }
+  CreateDirectoryRecursive(dir);
   std::string marker = dir +
 #ifdef _WIN32
       "\\ai_log_location.txt";
 #else
       "/ai_log_location.txt";
 #endif
-  std::string content = "ai_log.txt path:\n" + log_path + "\n";
-  AppendLineToFile(marker, content);
+  WriteFileOverwrite(marker, content);
 }
 
 }  // namespace
@@ -194,33 +266,33 @@ void AILogger::EnsureOpen() {
   std::string log_dir = ResolveLogDirectory();
   CreateDirectoryRecursive(log_dir);
 
-  std::string primary = log_dir +
+  std::vector<std::string> candidates;
+  candidates.push_back(log_dir +
 #ifdef _WIN32
-      "\\ai_log.txt";
+                       "\\ai_log.txt"
 #else
-      "/ai_log.txt";
+                       "/ai_log.txt"
 #endif
+  );
 
-  log_path_ = primary;
-  initialized_ = true;
-
-  // Probe write with startup line (fopen with share flags, not ofstream).
-  std::string startup = "[" + GetTimestamp() + "] [INFO ] AI logger opened: " +
-                        log_path_ + "\n";
-  if (!AppendLineToFile(log_path_, startup)) {
-    log_path_ = GetFallbackLogPath();
-    startup = "[" + GetTimestamp() + "] [INFO ] AI logger opened (fallback): " +
-              log_path_ + "\n";
-    if (!AppendLineToFile(log_path_, startup)) {
-      initialized_ = false;
-      log_path_.clear();
-      std::cerr << "[AI-Mozc Logger] Failed to open log file: " << primary
-                << " and fallback: " << log_path_ << std::endl;
+  std::string startup_prefix = "[" + FormatTimestamp() + "] [INFO ] AI logger opened: ";
+  for (const auto& candidate : candidates) {
+    std::string startup = startup_prefix + candidate + "\n";
+    if (AppendLineToFile(candidate, startup)) {
+      log_path_ = candidate;
+      initialized_ = true;
+      WriteLogLocationMarker(log_path_);
+      WriteAliveBeacon(log_path_);
+      EmitDebug("logger opened: " + log_path_);
       return;
     }
+    EmitDebug("logger open failed: " + candidate);
   }
 
-  WriteLogLocationMarker(log_path_);
+  initialized_ = false;
+  log_path_.clear();
+  WriteAliveBeacon("(none)");
+  EmitDebug("logger open failed for all candidates");
 }
 
 std::string AILogger::GetLogPath() {
@@ -253,7 +325,6 @@ void AILogger::Warn(const std::string& msg) {
 
 void AILogger::Error(const std::string& msg) {
   Log(LogLevel::ERROR, msg);
-  std::cerr << "[AI-Mozc ERROR] " << msg << std::endl;
 }
 
 void AILogger::Perf(const std::string& operation, int64_t elapsed_ms) {
@@ -268,9 +339,10 @@ void AILogger::LogRequest(const std::string& prompt) {
     return;
   }
 
+  // INFO so it appears with default log_level=info (was DEBUG before).
   std::ostringstream oss;
   oss << "[AI REQUEST] " << prompt;
-  Log(LogLevel::DEBUG, oss.str());
+  Log(LogLevel::INFO, oss.str());
 }
 
 void AILogger::LogResponse(const std::string& response) {
@@ -281,7 +353,7 @@ void AILogger::LogResponse(const std::string& response) {
 
   std::ostringstream oss;
   oss << "[AI RESPONSE] " << response;
-  Log(LogLevel::DEBUG, oss.str());
+  Log(LogLevel::INFO, oss.str());
 }
 
 void AILogger::Flush() {
@@ -295,20 +367,22 @@ void AILogger::Log(LogLevel level, const std::string& msg) {
     return;
   }
 
-  std::lock_guard<std::mutex> lock(mutex_);
-
-  if (!initialized_ || log_path_.empty()) {
-    std::cerr << "[AI-Mozc] " << GetLevelString(level) << ": " << msg << std::endl;
-    return;
-  }
-
   std::ostringstream line;
-  line << "[" << GetTimestamp() << "] "
+  line << "[" << FormatTimestamp() << "] "
        << "[" << GetLevelString(level) << "] "
        << msg << "\n";
 
+  // Always mirror to DebugView on Windows (works even when file logging fails).
+  EmitDebug(GetLevelString(level) + std::string(": ") + msg);
+
+  std::lock_guard<std::mutex> lock(mutex_);
+
+  if (!initialized_ || log_path_.empty()) {
+    return;
+  }
+
   if (!AppendLineToFile(log_path_, line.str())) {
-    std::cerr << "[AI-Mozc] " << GetLevelString(level) << ": " << msg << std::endl;
+    EmitDebug("append failed to " + log_path_ + ": " + msg);
   }
 }
 
@@ -329,16 +403,7 @@ std::string AILogger::GetLevelString(LogLevel level) {
 }
 
 std::string AILogger::GetTimestamp() {
-  auto now = std::chrono::system_clock::now();
-  auto time = std::chrono::system_clock::to_time_t(now);
-  auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-      now.time_since_epoch()) % 1000;
-
-  std::ostringstream oss;
-  oss << std::put_time(std::localtime(&time), "%Y-%m-%d %H:%M:%S")
-      << "." << std::setfill('0') << std::setw(3) << ms.count();
-
-  return oss.str();
+  return FormatTimestamp();
 }
 
 ScopedTimer::ScopedTimer(const std::string& operation)
