@@ -145,12 +145,123 @@ def patch_installer_wxs_registry_fix(mozc_src: Path, dry_run: bool) -> None:
         wxs_file.write_text(text, encoding="utf-8")
 
 
+def patch_installer_wxs_fix_ca_2762(mozc_src: Path, dry_run: bool) -> None:
+    """Fix MSI error 2762 caused by deferred CAs outside InstallInitialize..InstallFinalize.
+
+    Deferred/commit CAs must sit between InstallInitialize and InstallFinalize.
+    Our PreInstallCleanup was scheduled Before=InstallValidate (too early) as deferred,
+    which triggers: "Cannot write script record. Transaction not started." (2762).
+
+    Fix:
+    - Drop PreInstallCleanup from the execute sequence (ShutdownServer already stops Mozc)
+    - Run SeedAIConfig / PostInstallVerify as immediate After=InstallFinalize
+      (files are on disk; properties like MozcDir are available)
+    """
+    import re
+
+    wxs_file = mozc_src / "win32" / "installer" / "installer_oss_64bit.wxs"
+    text = wxs_file.read_text(encoding="utf-8")
+
+    if 'CustomAction Id="SeedAIConfig"' not in text:
+        print("installer_oss_64bit.wxs has no SeedAIConfig; skip 2762 fix")
+        return
+
+    if 'Custom Action="SeedAIConfig" After="InstallFinalize"' in text and (
+        'Execute="deferred"' not in text
+        or 'Id="SeedAIConfig"' not in text.split('Execute="deferred"')[0][-200:]
+    ):
+        # Already fixed if Seed is After InstallFinalize and SeedAIConfig block has no deferred
+        seed_block = re.search(
+            r'<CustomAction Id="SeedAIConfig"[^/]*?/>',
+            text,
+            flags=re.DOTALL,
+        )
+        if seed_block and 'Execute="deferred"' not in seed_block.group(0):
+            print("installer_oss_64bit.wxs CA sequencing already 2762-safe; skipping")
+            return
+
+    original = text
+
+    # Rewrite AI PowerShell custom actions: immediate (no Execute=deferred/commit).
+    for action_id, script, extra_args in (
+        ("PreInstallCleanup", "pre_install_cleanup.ps1", ""),
+        ("SeedAIConfig", "setup_ai_mozc.ps1", " -CleanInstall"),
+        ("PostInstallVerify", "post_install_verify.ps1", ""),
+    ):
+        pattern = rf'<CustomAction Id="{action_id}"[^/]*?/>'
+        replacement = (
+            f'<CustomAction Id="{action_id}"\n'
+            f'                  Directory="MozcDir"\n'
+            f'                  ExeCommand="powershell.exe -NoProfile -ExecutionPolicy Bypass '
+            f'-File &quot;[MozcDir]documents\\{script}&quot;{extra_args} -Quiet"\n'
+            f'                  Impersonate="yes"\n'
+            f'                  Return="ignore" />'
+        )
+        # re.sub treats backslashes specially in the replacement string.
+        repl = replacement.replace("\\", r"\\")
+        text2, n = re.subn(pattern, repl, text, count=1, flags=re.DOTALL)
+        if n:
+            text = text2
+        elif action_id == "SeedAIConfig":
+            # Older partial patch may use a shorter SeedAIConfig without documents\
+            pattern_old = r'<CustomAction Id="SeedAIConfig"[^/]*?/>'
+            text, n = re.subn(pattern_old, repl, text, count=1, flags=re.DOTALL)
+            if not n:
+                raise RuntimeError(f"Could not rewrite CustomAction {action_id}")
+        elif action_id != "PreInstallCleanup" and action_id != "PostInstallVerify":
+            raise RuntimeError(f"Could not rewrite CustomAction {action_id}")
+        elif n == 0 and action_id in ("PreInstallCleanup", "PostInstallVerify"):
+            # Optional on older partial patches — insert after EnableTipProfile CA def.
+            pass
+    # Remove bad sequence entries for AI CAs (any previous ordering).
+    text = re.sub(
+        r'\s*<Custom Action="PreInstallCleanup"[^/]*?/>\s*',
+        "\n",
+        text,
+    )
+    text = re.sub(
+        r'\s*<Custom Action="SeedAIConfig"[^/]*?/>\s*',
+        "\n",
+        text,
+    )
+    text = re.sub(
+        r'\s*<Custom Action="PostInstallVerify"[^/]*?/>\s*',
+        "\n",
+        text,
+    )
+
+    # Insert Seed/Verify after InstallFinalize (immediate — runs when files exist).
+    if 'Custom Action="SeedAIConfig" After="InstallFinalize"' not in text:
+        m = re.search(
+            r'(\s*<Custom Action="EnableTipProfile" Before="InstallFinalize"[^/]*?/>)',
+            text,
+        )
+        if not m:
+            raise RuntimeError("Could not find EnableTipProfile sequence marker for 2762 fix")
+        insertion = (
+            m.group(1)
+            + """
+      <Custom Action="SeedAIConfig" After="InstallFinalize" Condition="(NOT (REMOVE=&quot;ALL&quot;)) AND (NOT UPGRADING)" />
+      <Custom Action="PostInstallVerify" After="SeedAIConfig" Condition="(NOT (REMOVE=&quot;ALL&quot;)) AND (NOT UPGRADING)" />"""
+        )
+        text = text[: m.start(1)] + insertion + text[m.end(1) :]
+
+    if text == original:
+        print("installer_oss_64bit.wxs 2762 fix: no changes needed")
+        return
+
+    print(f"patch {wxs_file} (fix MSI error 2762 CA sequencing)")
+    if not dry_run:
+        wxs_file.write_text(text, encoding="utf-8")
+
+
 def patch_installer_wxs(mozc_src: Path, dry_run: bool) -> None:
     wxs_file = mozc_src / "win32" / "installer" / "installer_oss_64bit.wxs"
     text = wxs_file.read_text(encoding="utf-8")
 
     if 'Component Id="AIPreInstallCleanup"' in text:
         patch_installer_wxs_registry_fix(mozc_src, dry_run)
+        patch_installer_wxs_fix_ca_2762(mozc_src, dry_run)
         return
 
     feature_marker = '      <ComponentRef Id="CreditsEn" />'
@@ -193,42 +304,43 @@ def patch_installer_wxs(mozc_src: Path, dry_run: bool) -> None:
         raise RuntimeError("Could not find CreditsEn component marker")
     text = text.replace(component_marker, component_replacement, 1)
 
-    sequence_marker = (
-        '      <Custom Action="FixupConfigFilePermission" Before="EnableTipProfile" '
-        'Condition="NOT (REMOVE=&quot;ALL&quot;)" />'
+    # Sequence: Seed/Verify after InstallFinalize (immediate). Do NOT schedule deferred
+    # CAs before InstallValidate — that causes MSI error 2762.
+    # Mozc's ShutdownServer already stops mozc_server before InstallValidate.
+    finalize_marker = (
+        '      <Custom Action="EnableTipProfile" Before="InstallFinalize" '
+        'Condition="(NOT (REMOVE=&quot;ALL&quot;)) AND (NOT UPGRADING)" />'
     )
-    sequence_replacement = (
-        sequence_marker
+    if finalize_marker not in text:
+        raise RuntimeError("Could not find EnableTipProfile sequence marker")
+    text = text.replace(
+        finalize_marker,
+        finalize_marker
         + """
-      <Custom Action="PreInstallCleanup" Before="InstallValidate" Condition="(NOT (REMOVE=&quot;ALL&quot;)) AND (NOT UPGRADING)" />
-      <Custom Action="SeedAIConfig" After="FixupConfigFilePermission" Condition="(NOT (REMOVE=&quot;ALL&quot;)) AND (NOT UPGRADING)" />
-      <Custom Action="PostInstallVerify" After="SeedAIConfig" Condition="(NOT (REMOVE=&quot;ALL&quot;)) AND (NOT UPGRADING)" />"""
+      <Custom Action="SeedAIConfig" After="InstallFinalize" Condition="(NOT (REMOVE=&quot;ALL&quot;)) AND (NOT UPGRADING)" />
+      <Custom Action="PostInstallVerify" After="SeedAIConfig" Condition="(NOT (REMOVE=&quot;ALL&quot;)) AND (NOT UPGRADING)" />""",
+        1,
     )
-    if sequence_marker not in text:
-        raise RuntimeError("Could not find InstallExecuteSequence marker")
-    text = text.replace(sequence_marker, sequence_replacement, 1)
 
     custom_action_marker = (
         '    <CustomAction Id="EnableTipProfile" DllEntry="EnableTipProfile" '
         'Execute="commit" Impersonate="yes" BinaryRef="mozc_installer_helper.dll" />'
     )
+    # Immediate CAs (no Execute=deferred). After InstallFinalize they see installed files.
     custom_action_replacement = custom_action_marker + r"""
     <CustomAction Id="PreInstallCleanup"
                   Directory="MozcDir"
                   ExeCommand="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;[MozcDir]documents\pre_install_cleanup.ps1&quot; -Quiet"
-                  Execute="deferred"
                   Impersonate="yes"
                   Return="ignore" />
     <CustomAction Id="SeedAIConfig"
                   Directory="MozcDir"
                   ExeCommand="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;[MozcDir]documents\setup_ai_mozc.ps1&quot; -CleanInstall -Quiet"
-                  Execute="deferred"
                   Impersonate="yes"
                   Return="ignore" />
     <CustomAction Id="PostInstallVerify"
                   Directory="MozcDir"
                   ExeCommand="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;[MozcDir]documents\post_install_verify.ps1&quot; -Quiet"
-                  Execute="deferred"
                   Impersonate="yes"
                   Return="ignore" />"""
     if custom_action_marker not in text:
@@ -242,6 +354,8 @@ def patch_installer_wxs(mozc_src: Path, dry_run: bool) -> None:
     if not dry_run:
         wxs_file.write_text(text, encoding="utf-8")
 
+    # Ensure 2762-safe even if partial state
+    patch_installer_wxs_fix_ca_2762(mozc_src, dry_run)
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Patch Mozc Windows installer for AI Mozc")
