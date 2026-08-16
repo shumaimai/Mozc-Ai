@@ -39,3 +39,14 @@ ai_config.json
 # Temporary files
 *.tmp
 *.temp
+
+/.mozc-build/
+/dist/
+/.bundle-venv/
+/.runtime-build/
+/runtime/bundle/
+/.bazelisk/
+/scripts/__pycache__/
+*.pyc
+/.msi-audit/
+/.runtime-smoke-user.*

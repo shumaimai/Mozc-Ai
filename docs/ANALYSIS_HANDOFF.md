@@ -3,7 +3,7 @@
 最終更新: 2026-08-05  
 対象リポジトリ: https://github.com/shumaimai/Mozc-Ai  
 ベースブランチ: `claude/ai-mozc-ime-integration-01UtNsKb2wmAp6dYJa6c8Hut`  
-ユーザー実機: Windows（ユーザー名 `syuhe`）、ローカルビルド環境あり
+ユーザー実機: Windows、ローカルビルド環境あり
 
 ---
 
@@ -262,7 +262,7 @@ Select-String "$env:TEMP\MozcAI_install.log" -Pattern '2762','1603','Return valu
 
 ## 7. ユーザー実機メモ
 
-- 作業ディレクトリ例: `C:\Users\syuhe\Desktop\mozc-ai\Mozc-Ai`
+- 作業ディレクトリ例: Mozc-Ai のチェックアウト先
 - ローカル Bazel キャッシュに 2026-08-05 の `ai_logger` オブジェクトあり → **ソース側ビルドは進んだが Program Files へ未反映**
 - PowerShell ExecutionPolicy でスクリプトが止まることあり → `Set-ExecutionPolicy -Scope Process Bypass`
 - TIP レジストリ問題（過去）: x86 の `mozc_tip64.dll` を指したまま → MS IME 風 / AI 無し。レジストリ修正で回復
@@ -308,14 +308,14 @@ Get-ChildItem "$env:LOCALAPPDATA\Google\Mozc" -Force -ea 0
 Get-ChildItem "$env:USERPROFILE\AppData\LocalLow\Mozc" -Force -ea 0
 
 # MSI ログ付きインストール（管理者）
-$msi = "C:\Users\syuhe\Desktop\mozc-ai\Mozc-Ai\dist\MozcAI64.msi"
+$msi = "<Mozc-Aiのチェックアウト先>\dist\MozcAI64.msi"
 msiexec /i $msi REINSTALLMODE=emus /L*v "$env:TEMP\MozcAI_install.log"
 
 # ログ抜粋
 Select-String "$env:TEMP\MozcAI_install.log" -Pattern '2762','1603','Return value 3','NEWERVERSION','Installation success or error status' | Select -Last 40
 
 # リビルド（最新）
-cd C:\Users\syuhe\Desktop\mozc-ai\Mozc-Ai
+cd <Mozc-Aiのチェックアウト先>
 git fetch
 git checkout claude/ai-mozc-ime-integration-01UtNsKb2wmAp6dYJa6c8Hut
 git pull

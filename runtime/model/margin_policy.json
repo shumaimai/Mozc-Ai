@@ -1,0 +1,12 @@
+{
+  "tau": 2.5,
+  "cand_cap": 30,
+  "max_len": 128,
+  "backend": "onnx_fp32",
+  "int8": false,
+  "top_k": null,
+  "timeout_ms": 200,
+  "context_clip_max_chars": 50,
+  "base_model": "sbintuitions/modernbert-ja-30m",
+  "note": "Contextual Track B ship policy (NEXT_TASK_PHASE3_CTX). Do not use int8."
+}

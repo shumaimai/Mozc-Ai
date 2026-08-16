@@ -1,11 +1,11 @@
-# AI Mozc IME - Windows MSI packaging script
-# Builds Mozc + AI integration and produces MozcAI64.msi
+# Mozc AI v1.0 - reproducible all-in-one Windows MSI packager.
 
 param(
     [string]$MozcDir = "",
     [string]$MozcRepo = "https://github.com/google/mozc.git",
-    [string]$MozcRef = "master",
+    [string]$MozcRef = "3f235b4eb6fcff7d14ef5f0fb8ee56de7ee4c732",
     [string]$OutputDir = "",
+    [switch]$SkipRuntime,
     [switch]$SkipDeps,
     [switch]$SkipQt,
     [switch]$DryRun,
@@ -16,15 +16,16 @@ $ErrorActionPreference = "Stop"
 
 function Show-Help {
     Write-Host @"
-AI Mozc IME - Windows MSI Packager
+Mozc AI v1.0 - Windows MSI Packager
 
 Usage: .\package_windows.ps1 [options]
 
 Options:
     -MozcDir <path>     Existing mozc/src directory (if omitted, clones to .mozc-build)
     -MozcRepo <url>     Mozc git repository URL
-    -MozcRef <ref>       Git branch/tag/commit for Mozc
+    -MozcRef <ref>       Pinned Mozc commit (default is the tested v1.0 base)
     -OutputDir <path>   Copy MSI here (default: dist\)
+    -SkipRuntime         Reuse an already-built runtime\bundle
     -SkipDeps            Skip python build_tools/update_deps.py
     -SkipQt              Skip Qt build (only if already built)
     -DryRun              Show commands without executing integration/build
@@ -38,7 +39,7 @@ Prerequisites:
     - .NET SDK (for WiX via Mozc)
 
 Output:
-    MozcAI64.msi (AI-enabled Mozc installer)
+    MozcAI-1.0.0-x64.msi (Mozc + local AI runtime + model)
 
 Example:
     .\package_windows.ps1
@@ -85,6 +86,12 @@ Require-Command git
 Require-Command python
 Require-Command bazelisk
 
+if (-not $SkipRuntime) {
+    Invoke-Step "Build local-only AI runtime" {
+        & (Join-Path $ScriptDir "build_runtime_bundle.ps1")
+    }
+}
+
 if (-not $MozcDir) {
     $WorkRoot = Join-Path $ProjectRoot ".mozc-build"
     $CloneRoot = Join-Path $WorkRoot "mozc"
@@ -127,7 +134,11 @@ try {
         }
     }
 
-    Invoke-Step "Build MozcAI64.msi" {
+    Invoke-Step "Test integrated reranker" {
+        bazelisk test //rewriter:rerank_rewriter_test --config release_build
+    }
+
+    Invoke-Step "Build Mozc AI v1.0 MSI" {
         bazelisk build package --config release_build
     }
 }
@@ -135,27 +146,20 @@ finally {
     Pop-Location
 }
 
-$MsiPath = Join-Path $MozcDir "bazel-bin\win32\installer\MozcAI64.msi"
+$MsiPath = Join-Path $MozcDir "bazel-bin\win32\installer\MozcAI-1.0.0-x64.msi"
 if (-not $DryRun) {
     if (-not (Test-Path $MsiPath)) {
         throw "MSI not found at expected path: $MsiPath"
     }
 
     New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
-    $Dest = Join-Path $OutputDir "MozcAI64.msi"
+    $Dest = Join-Path $OutputDir "MozcAI-1.0.0-x64.msi"
     Copy-Item -Path $MsiPath -Destination $Dest -Force
 
     Write-Host ""
     Write-Host "Package created:" -ForegroundColor Green
     Write-Host "  $Dest"
     Write-Host ""
-    Write-Host "Install:" -ForegroundColor Yellow
-    Write-Host "  # IMPORTANT: plain double-click MSI will NOT replace mozc_server.exe"
-    Write-Host "  # (same Mozc FileVersion → Windows Installer skips the file)."
-    Write-Host "  # Use elevated PowerShell:"
-    Write-Host "  .\scripts\install_msi.ps1 -MsiPath `"$Dest`""
-    Write-Host "  # or nuclear option:"
-    Write-Host "  .\scripts\install_msi.ps1 -MsiPath `"$Dest`" -UninstallFirst"
-    Write-Host "  2. Reboot"
-    Write-Host "  3. Check log: %LOCALAPPDATA%Low\Mozc\ai_log.txt"
+    Write-Host "The MSI has its own Mozc AI product identity and migrates legacy Mozc."
+    Write-Host "No conversion text logging is enabled by default."
 }
