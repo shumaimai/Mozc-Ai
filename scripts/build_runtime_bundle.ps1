@@ -1,5 +1,5 @@
 param(
-    [string]$Python = "py",
+    [string]$Python = "python",
     [string]$ModelDir = "",
     [string]$OutputDir = ""
 )
@@ -22,7 +22,7 @@ foreach ($required in @(
 }
 
 if (-not (Test-Path -LiteralPath $VenvPython)) {
-    & $Python -3 -m venv $Venv
+    & $Python -m venv $Venv
     if ($LASTEXITCODE -ne 0) { throw "Failed to create bundle venv" }
 }
 & $VenvPython -m pip install --disable-pip-version-check -r (Join-Path $ProjectRoot "runtime\requirements-bundle.txt")
