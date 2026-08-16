@@ -10,7 +10,8 @@ import shutil
 import sys
 from pathlib import Path
 
-PRODUCT_VERSION = "1.0.0"
+PRODUCT_VERSION = "1.0.1"
+MSI_FILE = f"MozcAI-{PRODUCT_VERSION}-x64.msi"
 PRODUCT_NAME = "Mozc AI"
 MANUFACTURER = "Mozc AI Project"
 UPGRADE_CODE = "2917DE59-7EFA-46A3-B16A-1EE0BBEADBA4"
@@ -126,10 +127,11 @@ filegroup(
 def patch_installer_build(mozc_src: Path, dry_run: bool) -> None:
     build_file = mozc_src / "win32" / "installer" / "BUILD.bazel"
     text = build_file.read_text(encoding="utf-8")
-    text = text.replace(
-        '_MSI_FILE = "Mozc64.msi" if BRANDING == "Mozc" else "GoogleJapaneseInput64.msi"',
-        '_MSI_FILE = "MozcAI-1.0.0-x64.msi" if BRANDING == "Mozc" else "GoogleJapaneseInput64.msi"',
-    )
+    for previous in ("Mozc64.msi", "MozcAI-1.0.0-x64.msi"):
+        text = text.replace(
+            f'_MSI_FILE = "{previous}" if BRANDING == "Mozc" else "GoogleJapaneseInput64.msi"',
+            f'_MSI_FILE = "{MSI_FILE}" if BRANDING == "Mozc" else "GoogleJapaneseInput64.msi"',
+        )
     if "//data/installer:ai_runtime.wxs" not in text:
         marker = '        "//data/installer:credits_en.html",'
         addition = (
@@ -194,9 +196,15 @@ def patch_installer_wxs(mozc_src: Path, dry_run: bool) -> None:
         f'Version="{PRODUCT_VERSION}" Manufacturer="{MANUFACTURER}" '
         f'UpgradeCode="{UPGRADE_CODE}" InstallerVersion="500">'
     )
-    if package_old not in text and package_new not in text:
+    package_v1_0_0 = (
+        f'<Package Name="{PRODUCT_NAME}" Language="1041" Codepage="932" '
+        f'Version="1.0.0" Manufacturer="{MANUFACTURER}" '
+        f'UpgradeCode="{UPGRADE_CODE}" InstallerVersion="500">'
+    )
+    if package_old not in text and package_v1_0_0 not in text and package_new not in text:
         raise RuntimeError("Could not find Package identity")
     text = text.replace(package_old, package_new, 1)
+    text = text.replace(package_v1_0_0, package_new, 1)
     if "Mozc AI v1.0 local-only package" not in text:
         text = text.replace(
             package_new,
@@ -251,6 +259,16 @@ def patch_installer_wxs(mozc_src: Path, dry_run: bool) -> None:
             1,
         )
 
+    if '<ComponentRef Id="LegacyPersonalRerankCleanup" />' not in text:
+        marker = '<ComponentRef Id="PrelaunchProcessesV1" />'
+        if marker not in text:
+            raise RuntimeError("Could not find startup component reference")
+        text = text.replace(
+            marker,
+            marker + '\n      <ComponentRef Id="LegacyPersonalRerankCleanup" />',
+            1,
+        )
+
     # Do not reuse the upstream component/value identity: the legacy product
     # removes its identically named Run value during migration.
     text = text.replace(
@@ -280,6 +298,43 @@ def patch_installer_wxs(mozc_src: Path, dry_run: bool) -> None:
         if run_marker not in text:
             raise RuntimeError("Could not find prelaunch registry entry")
         text = text.replace(run_marker, runtime_run + "\n      " + run_marker, 1)
+
+    if '<Component Id="LegacyPersonalRerankCleanup"' not in text:
+        cleanup_values = (
+            "MOZC_RERANK_ENABLED",
+            "MOZC_RERANK_DAEMON_ADDR",
+            "MOZC_RERANK_TIMEOUT_MS",
+            "MOZC_RERANK_GUARD_MODE",
+            "MOZC_RERANK_LOG",
+            "MOZC_RERANK_HOOK_CMD",
+            "MOZC_RERANK_POLICY",
+            "MOZC_RERANK_TAU",
+            "MOZC_RERANK_CAND_CAP",
+            "MOZC_RERANK_MAX_LEN",
+        )
+        removals = [
+            '      <RemoveRegistryValue Id="RemoveLegacyPersonalRun" Root="HKCU" '
+            'Key="Software\\Microsoft\\Windows\\CurrentVersion\\Run" '
+            'Name="MozcAIRerank" />'
+        ]
+        removals.extend(
+            f'      <RemoveRegistryValue Id="RemoveLegacyEnv{index}" Root="HKCU" '
+            f'Key="Environment" Name="{name}" />'
+            for index, name in enumerate(cleanup_values, start=1)
+        )
+        cleanup_component = (
+            '    <!-- Remove the pre-v1 WSL/personal startup path and its logging overrides. -->\n'
+            '    <Component Id="LegacyPersonalRerankCleanup" Directory="TARGETDIR">\n'
+            '      <RegistryValue Id="LegacyCleanupMarker" Root="HKCU" '
+            'Key="Software\\MozcAI" Name="LegacyCleanupVersion" '
+            f'Value="{PRODUCT_VERSION}" Type="string" KeyPath="yes" />\n'
+            + "\n".join(removals)
+            + "\n    </Component>\n"
+        )
+        marker = '    <Component Id="PrelaunchProcessesV1" Directory="TARGETDIR">'
+        if marker not in text:
+            raise RuntimeError("Could not find startup component insertion point")
+        text = text.replace(marker, cleanup_component + marker, 1)
     text = text.replace(
         'RegistryValue Id="RunBroker" Root="HKLM"',
         'RegistryValue Id="RunBrokerV1" Root="HKLM"',

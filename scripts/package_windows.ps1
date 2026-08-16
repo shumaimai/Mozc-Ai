@@ -39,7 +39,7 @@ Prerequisites:
     - .NET SDK (for WiX via Mozc)
 
 Output:
-    MozcAI-1.0.0-x64.msi (Mozc + local AI runtime + model)
+    MozcAI-1.0.1-x64.msi (Mozc + local AI runtime + model)
 
 Example:
     .\package_windows.ps1
@@ -146,14 +146,14 @@ finally {
     Pop-Location
 }
 
-$MsiPath = Join-Path $MozcDir "bazel-bin\win32\installer\MozcAI-1.0.0-x64.msi"
+$MsiPath = Join-Path $MozcDir "bazel-bin\win32\installer\MozcAI-1.0.1-x64.msi"
 if (-not $DryRun) {
     if (-not (Test-Path $MsiPath)) {
         throw "MSI not found at expected path: $MsiPath"
     }
 
     New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
-    $Dest = Join-Path $OutputDir "MozcAI-1.0.0-x64.msi"
+    $Dest = Join-Path $OutputDir "MozcAI-1.0.1-x64.msi"
     Copy-Item -Path $MsiPath -Destination $Dest -Force
 
     Write-Host ""

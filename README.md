@@ -1,12 +1,12 @@
 # Mozc AI
 
 Mozc AI は、Mozc に日本語文脈リランカーを統合した Windows 向けIMEです。
-v1.0.0 は Mozc、ローカル推論ランタイム、ONNXモデル、トークナイザーを1つの
+v1.0.1 は Mozc、ローカル推論ランタイム、ONNXモデル、トークナイザーを1つの
 MSIに収録しており、Ollama、Python、クラウドAPIはインストール後に不要です。
 
-## v1.0.0 の要点
+## v1.0.1 の要点
 
-- 配布物: `MozcAI-1.0.0-x64.msi`
+- 配布物: `MozcAI-1.0.1-x64.msi`
 - 製品名: `Mozc AI`
 - 推論先: `127.0.0.1:17890` のローカルプロセスのみ
 - モデル: `sbintuitions/modernbert-ja-30m` を基にした公開データ版
@@ -15,12 +15,12 @@ MSIに収録しており、Ollama、Python、クラウドAPIはインストー�
 - 個人利用ログ・private usageモデル: 配布物、リポジトリ、GitHub Releaseに不収録
 
 旧版に存在したDeepSeek/OpenAI互換バックエンドとOllamaバックエンドのソースは
-履歴参照用に残っていますが、v1.0.0のサーバーには登録・リンクされません。
+履歴参照用に残っていますが、v1.0.1のサーバーには登録・リンクされません。
 
 ## インストール
 
 1. [Releases](https://github.com/shumaimai/Mozc-Ai/releases) から
-   `MozcAI-1.0.0-x64.msi` を取得します。
+   `MozcAI-1.0.1-x64.msi` を取得します。
 2. MSIを実行し、Windowsの確認に従います。
 3. インストール完了後に再起動を求められた場合は、Windowsを再起動します。
 
@@ -56,7 +56,7 @@ git lfs pull
 
 再現性のため、Mozcの基準コミットは
 `3f235b4eb6fcff7d14ef5f0fb8ee56de7ee4c732` に固定しています。
-成果物は `dist/MozcAI-1.0.0-x64.msi` に生成されます。
+成果物は `dist/MozcAI-1.0.1-x64.msi` に生成されます。
 
 既に依存関係・Qt・ランタイムを構築済みの場合:
 
@@ -104,7 +104,7 @@ bazelisk build //client:runtime_smoke_client --config release_build
 同梱モデルの由来は
 [`runtime/model/PROVENANCE.md`](runtime/model/PROVENANCE.md)、基盤モデルの
 ライセンス全文は [`runtime/model/MODEL_LICENSE.txt`](runtime/model/MODEL_LICENSE.txt)
-に収録しています。v1.0.0では公開データ版モデルのみを配布します。
+に収録しています。v1.0.1では公開データ版モデルのみを配布します。
 
 Mozc由来コードにはMozcのBSDライセンス、基盤モデルにはMITライセンス、その他の
 依存関係には各同梱ライセンスが適用されます。
@@ -116,10 +116,10 @@ Mozc由来コードにはMozcのBSDライセンス、基盤モデルにはMITラ
 - `scripts/integrate_mozc.py`: Mozc変換パイプラインへの統合
 - `scripts/integrate_mozc_installer.py`: 単一MSIへのランタイム統合
 - `scripts/build_runtime_bundle.ps1`: Windowsランタイムの固定バンドル作成
-- `scripts/package_windows.ps1`: v1.0.0 MSIの再現ビルド
+- `scripts/package_windows.ps1`: v1.0.1 MSIの再現ビルド
 - [Mozc-Ai-Training](https://github.com/shumaimai/Mozc-Ai-Training): データ生成、学習、評価、ONNX出力
 
 ## リリース
 
 変更点と検証結果は
-[`docs/RELEASE_NOTES_V1.0.0.md`](docs/RELEASE_NOTES_V1.0.0.md) を参照してください。
+[`docs/RELEASE_NOTES_V1.0.1.md`](docs/RELEASE_NOTES_V1.0.1.md) を参照してください。
