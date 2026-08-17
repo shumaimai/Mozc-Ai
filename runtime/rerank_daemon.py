@@ -23,6 +23,15 @@ import numpy as np
 import onnxruntime as ort
 import sentencepiece as spm
 
+
+# PyInstaller's Windows GUI bootloader intentionally leaves stdout/stderr as
+# None.  Point them at the null device so argparse and the optional readiness
+# message remain safe without creating a console window at logon.
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, "w", encoding="utf-8")
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, "w", encoding="utf-8")
+
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 17890
 DEFAULT_TAU = 2.5

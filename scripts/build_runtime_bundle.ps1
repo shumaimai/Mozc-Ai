@@ -33,6 +33,7 @@ $BuildRoot = Join-Path $ProjectRoot ".runtime-build"
     --noconfirm `
     --clean `
     --onedir `
+    --noconsole `
     --name rerank_daemon `
     --distpath $BuildRoot `
     --workpath (Join-Path $BuildRoot "work") `
@@ -53,6 +54,11 @@ New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 Copy-Item -Recurse -Force -Path (Join-Path $BuildRoot "rerank_daemon\*") -Destination $OutputDir
 Copy-Item -Recurse -Force -Path $ModelDir -Destination (Join-Path $OutputDir "model")
 
-& (Join-Path $OutputDir "rerank_daemon.exe") --help | Out-Null
-if ($LASTEXITCODE -ne 0) { throw "Bundled daemon smoke failed" }
+$Smoke = Start-Process `
+    -FilePath (Join-Path $OutputDir "rerank_daemon.exe") `
+    -ArgumentList "--help" `
+    -WindowStyle Hidden `
+    -Wait `
+    -PassThru
+if ($Smoke.ExitCode -ne 0) { throw "Bundled daemon smoke failed" }
 Write-Host "RUNTIME_BUNDLE_READY $OutputDir"

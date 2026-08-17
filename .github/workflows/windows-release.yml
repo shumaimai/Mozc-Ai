@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "既存ReleaseへMSIを追加する場合のタグ（例: v1.0.1）"
+        description: "既存ReleaseへMSIを追加する場合のタグ（例: v1.0.2）"
         required: false
         default: ""
 
@@ -70,7 +70,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $msi = (Resolve-Path "dist/MozcAI-1.0.1-x64.msi").Path
+          $msi = (Resolve-Path "dist/MozcAI-1.0.2-x64.msi").Path
           $audit = Join-Path $env:RUNNER_TEMP "mozc-v1-msi-audit"
           New-Item -ItemType Directory -Path $audit -Force | Out-Null
           $process = Start-Process msiexec.exe -ArgumentList @(
@@ -108,29 +108,29 @@ jobs:
           $model = Join-Path $root "ai/model/cross_encoder_fp32.onnx"
           if ((Get-Item $model).Length -lt 100MB) { throw "ONNX model is unexpectedly small" }
           $hash = (Get-FileHash $msi -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$hash  MozcAI-1.0.1-x64.msi" | Set-Content -Encoding ascii "dist/MozcAI-1.0.1-x64.msi.sha256"
+          "$hash  MozcAI-1.0.2-x64.msi" | Set-Content -Encoding ascii "dist/MozcAI-1.0.2-x64.msi.sha256"
           "sha256=$hash" >> $env:GITHUB_OUTPUT
           Write-Host "MSI audit passed: $hash"
 
       - name: Upload verified artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MozcAI-1.0.1-x64
+          name: MozcAI-1.0.2-x64
           path: |
-            dist/MozcAI-1.0.1-x64.msi
-            dist/MozcAI-1.0.1-x64.msi.sha256
+            dist/MozcAI-1.0.2-x64.msi
+            dist/MozcAI-1.0.2-x64.msi.sha256
           if-no-files-found: error
 
-      - name: Publish Mozc AI v1.0.1
+      - name: Publish Mozc AI v1.0.2
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.1
-          name: Mozc AI v1.0.1
-          body_path: docs/RELEASE_NOTES_V1.0.1.md
+          tag_name: v1.0.2
+          name: Mozc AI v1.0.2
+          body_path: docs/RELEASE_NOTES_V1.0.2.md
           files: |
-            dist/MozcAI-1.0.1-x64.msi
-            dist/MozcAI-1.0.1-x64.msi.sha256
+            dist/MozcAI-1.0.2-x64.msi
+            dist/MozcAI-1.0.2-x64.msi.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -155,7 +155,7 @@ jobs:
         with:
           tag_name: ${{ github.event.inputs.release_tag }}
           files: |
-            dist/MozcAI-1.0.1-x64.msi
-            dist/MozcAI-1.0.1-x64.msi.sha256
+            dist/MozcAI-1.0.2-x64.msi
+            dist/MozcAI-1.0.2-x64.msi.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

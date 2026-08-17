@@ -10,7 +10,7 @@ import shutil
 import sys
 from pathlib import Path
 
-PRODUCT_VERSION = "1.0.1"
+PRODUCT_VERSION = "1.0.2"
 MSI_FILE = f"MozcAI-{PRODUCT_VERSION}-x64.msi"
 PRODUCT_NAME = "Mozc AI"
 MANUFACTURER = "Mozc AI Project"
@@ -127,7 +127,11 @@ filegroup(
 def patch_installer_build(mozc_src: Path, dry_run: bool) -> None:
     build_file = mozc_src / "win32" / "installer" / "BUILD.bazel"
     text = build_file.read_text(encoding="utf-8")
-    for previous in ("Mozc64.msi", "MozcAI-1.0.0-x64.msi"):
+    for previous in (
+        "Mozc64.msi",
+        "MozcAI-1.0.0-x64.msi",
+        "MozcAI-1.0.1-x64.msi",
+    ):
         text = text.replace(
             f'_MSI_FILE = "{previous}" if BRANDING == "Mozc" else "GoogleJapaneseInput64.msi"',
             f'_MSI_FILE = "{MSI_FILE}" if BRANDING == "Mozc" else "GoogleJapaneseInput64.msi"',
@@ -201,10 +205,21 @@ def patch_installer_wxs(mozc_src: Path, dry_run: bool) -> None:
         f'Version="1.0.0" Manufacturer="{MANUFACTURER}" '
         f'UpgradeCode="{UPGRADE_CODE}" InstallerVersion="500">'
     )
-    if package_old not in text and package_v1_0_0 not in text and package_new not in text:
+    package_v1_0_1 = (
+        f'<Package Name="{PRODUCT_NAME}" Language="1041" Codepage="932" '
+        f'Version="1.0.1" Manufacturer="{MANUFACTURER}" '
+        f'UpgradeCode="{UPGRADE_CODE}" InstallerVersion="500">'
+    )
+    if (
+        package_old not in text
+        and package_v1_0_0 not in text
+        and package_v1_0_1 not in text
+        and package_new not in text
+    ):
         raise RuntimeError("Could not find Package identity")
     text = text.replace(package_old, package_new, 1)
     text = text.replace(package_v1_0_0, package_new, 1)
+    text = text.replace(package_v1_0_1, package_new, 1)
     if "Mozc AI v1.0 local-only package" not in text:
         text = text.replace(
             package_new,
