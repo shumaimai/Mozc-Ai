@@ -28,8 +28,10 @@
 #define MOZC_REWRITER_RERANK_REWRITER_H_
 
 #include <cstdint>
+#include <map>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "rewriter/rewriter_interface.h"
@@ -132,8 +134,10 @@ class RerankRewriter : public RewriterInterface {
   std::string log_path_;
 
   mutable std::mutex pending_mutex_;
-  mutable PendingLog pending_log_;
-  mutable bool has_pending_log_ = false;
+  // Mozc's Rewriter API does not pass a request/session ID to Finish().
+  // Keep lifecycle state per calling thread; Rewrite and Finish must be
+  // invoked on the same thread for a conversion lifecycle.
+  mutable std::map<std::thread::id, PendingLog> pending_logs_;
   mutable int consecutive_timeouts_ = 0;
   mutable int consecutive_ok_ = 0;
   mutable int degrade_tier_ = 0;  // 0=full .. 4=Mozc-only

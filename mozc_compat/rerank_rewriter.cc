@@ -7,6 +7,8 @@
 #include "rewriter/rerank_margin.h"
 
 #include <algorithm>
+#include <atomic>
+#include <cctype>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
@@ -24,6 +26,7 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "converter/segments.h"
+#include "converter/attribute.h"
 #include "request/conversion_request.h"
 
 #ifdef _WIN32
@@ -51,6 +54,8 @@ using RerankSocket = int;
 namespace mozc {
 namespace {
 
+std::atomic<std::uint64_t> g_hook_request_counter{0};
+
 std::string GetEnvOrEmpty(const char* name) {
   const char* v = std::getenv(name);
   return v == nullptr ? std::string() : std::string(v);
@@ -62,6 +67,33 @@ bool EnvTruthy(const std::string& v) {
   }
   std::string lower = std::string(absl::AsciiStrToLower(v));
   return lower == "1" || lower == "true" || lower == "yes" || lower == "on";
+}
+
+bool IsPunctuationOrSymbol(const converter::Candidate& candidate) {
+  if (candidate.category == converter::Candidate::SYMBOL) {
+    return true;
+  }
+  if (candidate.value.empty()) {
+    return false;
+  }
+  for (unsigned char c : candidate.value) {
+    if (c >= 0x80) {
+      return false;
+    }
+    if (std::isalnum(c) || std::isspace(c)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool IsAiOverwriteProtected(const converter::Candidate& candidate) {
+  constexpr uint32_t kHardAttributes =
+      converter::Attribute::USER_SEGMENT_HISTORY_REWRITER |
+      converter::Attribute::RERANKED | converter::Attribute::NUMBER |
+      converter::Attribute::NO_MODIFICATION | converter::Attribute::NO_DELETABLE;
+  return (candidate.attributes & kHardAttributes) != 0 ||
+         IsPunctuationOrSymbol(candidate);
 }
 
 // Optional privacy-safe runtime diagnostics.  This deliberately records only
@@ -471,8 +503,11 @@ bool RerankRewriter::Rewrite(const ConversionRequest& request,
   // the scored target is recorded so Finish cannot accidentally read segment 0.
   const int conv_n = static_cast<int>(segments->conversion_segments_size());
   const int target = conv_n - 1;
-  const std::string conversion_id =
-      absl::StrCat("rerank-", ++conversion_counter_);
+  std::string conversion_id;
+  {
+    std::lock_guard<std::mutex> lock(pending_mutex_);
+    conversion_id = absl::StrCat("rerank-", ++conversion_counter_);
+  }
   Segment* segment = segments->mutable_conversion_segment(target);
   if (segment == nullptr || segment->candidates_size() == 0) {
     return false;
@@ -491,6 +526,7 @@ bool RerankRewriter::Rewrite(const ConversionRequest& request,
   for (int i = 0; i < n; ++i) {
     nbest.push_back(std::string(segment->candidate(i).value));
   }
+  const bool protected_mozc_top1 = IsAiOverwriteProtected(segment->candidate(0));
 
   // The application-provided surrounding text is authoritative and remains
   // available even when Mozc cannot reconstruct converter history.  Falling
@@ -521,16 +557,16 @@ bool RerankRewriter::Rewrite(const ConversionRequest& request,
         context_prev.size(), reading.size(), nbest.size(),
         segments->history_segments_size(), segments->conversion_segments_size());
     std::lock_guard<std::mutex> lock(pending_mutex_);
-    pending_log_.conversion_id = conversion_id;
-    pending_log_.target_segment_index = target;
-    pending_log_.reading = reading;
-    pending_log_.nbest = nbest;
-    pending_log_.context_prev = context_prev;
-    pending_log_.rerank_top1 = nbest.front();
-    pending_log_.final_top1 = nbest.front();
-    pending_log_.overwritten = false;
-    pending_log_.tau = tau_;
-    has_pending_log_ = true;
+    PendingLog &pending = pending_logs_[std::this_thread::get_id()];
+    pending.conversion_id = conversion_id;
+    pending.target_segment_index = target;
+    pending.reading = reading;
+    pending.nbest = nbest;
+    pending.context_prev = context_prev;
+    pending.rerank_top1 = nbest.front();
+    pending.final_top1 = nbest.front();
+    pending.overwritten = false;
+    pending.tau = tau_;
     return false;
   }
 
@@ -552,21 +588,26 @@ bool RerankRewriter::Rewrite(const ConversionRequest& request,
     result.final_top1 = nbest.front();
     result.ranked_surfaces = nbest;
   }
+  if (result.overwritten && protected_mozc_top1) {
+    result.overwritten = false;
+    result.final_top1 = nbest.front();
+    result.ranked_surfaces = nbest;
+  }
 
   const bool changed = ReorderSegment(segment, result.ranked_surfaces);
 
   {
     std::lock_guard<std::mutex> lock(pending_mutex_);
-    pending_log_.conversion_id = conversion_id;
-    pending_log_.target_segment_index = target;
-    pending_log_.reading = reading;
-    pending_log_.nbest = nbest;
-    pending_log_.context_prev = context_prev;
-    pending_log_.rerank_top1 = result.rerank_top1;
-    pending_log_.final_top1 = result.final_top1;
-    pending_log_.overwritten = result.overwritten;
-    pending_log_.tau = tau_;
-    has_pending_log_ = true;
+    PendingLog &pending = pending_logs_[std::this_thread::get_id()];
+    pending.conversion_id = conversion_id;
+    pending.target_segment_index = target;
+    pending.reading = reading;
+    pending.nbest = nbest;
+    pending.context_prev = context_prev;
+    pending.rerank_top1 = result.rerank_top1;
+    pending.final_top1 = result.final_top1;
+    pending.overwritten = result.overwritten;
+    pending.tau = tau_;
   }
 
   return changed;
@@ -582,11 +623,12 @@ void RerankRewriter::Finish(const ConversionRequest& request,
   PendingLog pending;
   {
     std::lock_guard<std::mutex> lock(pending_mutex_);
-    if (!has_pending_log_) {
+    const auto it = pending_logs_.find(std::this_thread::get_id());
+    if (it == pending_logs_.end()) {
       return;
     }
-    pending = pending_log_;
-    has_pending_log_ = false;
+    pending = it->second;
+    pending_logs_.erase(it);
   }
 
   std::string chosen = pending.final_top1;
@@ -603,8 +645,7 @@ void RerankRewriter::Finish(const ConversionRequest& request,
 
 void RerankRewriter::Clear() {
   std::lock_guard<std::mutex> lock(pending_mutex_);
-  has_pending_log_ = false;
-  pending_log_ = PendingLog{};
+  pending_logs_.clear();
 }
 
 bool RerankRewriter::CallHookWithTimeout(const std::string& reading,
@@ -687,7 +728,9 @@ bool RerankRewriter::CallHook(const std::string& reading,
     return false;
   }
 
-  const std::string base = absl::StrCat("mozc_rerank_", MOZC_RERANK_GETPID());
+  const std::string base = absl::StrCat(
+      "mozc_rerank_", MOZC_RERANK_GETPID(), "_",
+      g_hook_request_counter.fetch_add(1, std::memory_order_relaxed));
   const std::string req_path = JoinPath(TempDir(), base + "_req.json");
   const std::string resp_path = JoinPath(TempDir(), base + "_resp.json");
   DeleteFileQuiet(resp_path);

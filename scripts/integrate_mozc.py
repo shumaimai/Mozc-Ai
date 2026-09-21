@@ -14,6 +14,7 @@ REWRITER_FILES = (
     "rerank_rewriter_test.cc",
     "context_clip.h",
     "context_clip.cc",
+    "context_clip_cli.cc",
     "rerank_guard.h",
     "rerank_guard.cc",
     "rerank_eligible_readings.inc",
