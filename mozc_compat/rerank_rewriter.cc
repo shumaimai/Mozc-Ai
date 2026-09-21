@@ -96,6 +96,34 @@ bool IsAiOverwriteProtected(const converter::Candidate& candidate) {
          IsPunctuationOrSymbol(candidate);
 }
 
+const char* CandidateCategoryName(converter::Candidate::Category category) {
+  switch (category) {
+    case converter::Candidate::DEFAULT_CATEGORY:
+      return "DEFAULT";
+    case converter::Candidate::SYMBOL:
+      return "SYMBOL";
+    case converter::Candidate::OTHER:
+      return "OTHER";
+  }
+  return "OTHER";
+}
+
+const char* CandidateProtectionName(const converter::Candidate& candidate) {
+  constexpr uint32_t kHistoryOrSafety =
+      converter::Attribute::USER_SEGMENT_HISTORY_REWRITER |
+      converter::Attribute::RERANKED | converter::Attribute::NUMBER |
+      converter::Attribute::NO_MODIFICATION | converter::Attribute::NO_DELETABLE;
+  if ((candidate.attributes & kHistoryOrSafety) != 0 ||
+      IsPunctuationOrSymbol(candidate)) {
+    return "HARD_PROTECT";
+  }
+  if ((candidate.attributes & (converter::Attribute::USER_DICTIONARY |
+                              converter::Attribute::CONTEXT_SENSITIVE)) != 0) {
+    return "DELTA_ONLY";
+  }
+  return "NORMAL";
+}
+
 // Optional privacy-safe runtime diagnostics.  This deliberately records only
 // byte/count metadata and fixed stage names: never surrounding text, readings,
 // candidates, or any other user-provided string.
@@ -521,10 +549,24 @@ bool RerankRewriter::Rewrite(const ConversionRequest& request,
 
   const int cap = EffectiveCandCap();
   std::vector<std::string> nbest;
+  std::vector<PendingLog::CandidateMetadata> candidate_metadata;
   const int n = std::min(cap, static_cast<int>(segment->candidates_size()));
   nbest.reserve(n);
   for (int i = 0; i < n; ++i) {
-    nbest.push_back(std::string(segment->candidate(i).value));
+    const converter::Candidate& candidate = segment->candidate(i);
+    nbest.push_back(std::string(candidate.value));
+    PendingLog::CandidateMetadata metadata;
+    metadata.surface = std::string(candidate.value);
+    metadata.rank = i;
+    metadata.cost = candidate.cost;
+    metadata.cost_delta = candidate.cost - segment->candidate(0).cost;
+    metadata.lid = candidate.lid;
+    metadata.rid = candidate.rid;
+    metadata.attributes = candidate.attributes;
+    metadata.category = CandidateCategoryName(candidate.category);
+    metadata.converted_segment_count = candidate.effective_converted_segment_count();
+    metadata.protection = CandidateProtectionName(candidate);
+    candidate_metadata.push_back(std::move(metadata));
   }
   const bool protected_mozc_top1 = IsAiOverwriteProtected(segment->candidate(0));
 
@@ -562,6 +604,7 @@ bool RerankRewriter::Rewrite(const ConversionRequest& request,
     pending.target_segment_index = target;
     pending.reading = reading;
     pending.nbest = nbest;
+    pending.candidate_metadata = candidate_metadata;
     pending.context_prev = context_prev;
     pending.rerank_top1 = nbest.front();
     pending.final_top1 = nbest.front();
@@ -603,6 +646,7 @@ bool RerankRewriter::Rewrite(const ConversionRequest& request,
     pending.target_segment_index = target;
     pending.reading = reading;
     pending.nbest = nbest;
+    pending.candidate_metadata = candidate_metadata;
     pending.context_prev = context_prev;
     pending.rerank_top1 = result.rerank_top1;
     pending.final_top1 = result.final_top1;
@@ -1024,6 +1068,24 @@ void RerankRewriter::AppendConversionLog(const PendingLog& pending,
       ss << ',';
     }
     ss << '"' << EscapeJson(pending.nbest[i]) << '"';
+  }
+  ss << "],\"candidate_metadata\":[";
+  for (size_t i = 0; i < pending.candidate_metadata.size(); ++i) {
+    if (i) {
+      ss << ',';
+    }
+    const auto& c = pending.candidate_metadata[i];
+    ss << "{\"surface\":\"" << EscapeJson(c.surface)
+       << "\",\"rank\":" << c.rank
+       << ",\"cost\":" << c.cost
+       << ",\"cost_delta\":" << c.cost_delta
+       << ",\"lid\":" << c.lid
+       << ",\"rid\":" << c.rid
+       << ",\"attributes\":" << c.attributes
+       << ",\"category\":\"" << c.category
+       << "\",\"converted_segment_count\":"
+       << c.converted_segment_count
+       << ",\"protection\":\"" << c.protection << "\"}";
   }
   // Raw context is intentionally omitted from the default online log.
   ss << "],\"mozc_top1\":\""

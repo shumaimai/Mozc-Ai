@@ -283,6 +283,9 @@ TEST(RerankRewriterTest, MultiSegmentLogUsesScoredTargetSegment) {
   EXPECT_NE(line.find("\"mozc_top1\":\"記者\""), std::string::npos);
   EXPECT_NE(line.find("\"model_top1\":\"汽車\""), std::string::npos);
   EXPECT_NE(line.find("\"committed_candidate\":\"汽車\""), std::string::npos);
+  EXPECT_NE(line.find("\"candidate_metadata\":[{"), std::string::npos);
+  EXPECT_NE(line.find("\"surface\":\"記者\""), std::string::npos);
+  EXPECT_NE(line.find("\"protection\":\"NORMAL\""), std::string::npos);
   std::remove(log_path);
   std::remove(hook_path);
   unsetenv("MOZC_RERANK_LOG");
