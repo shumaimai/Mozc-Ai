@@ -1,0 +1,137 @@
+name: Build Mozc with ni conjunction
+
+on:
+  push:
+    branches:
+      - build/mozc-ni-conjunction
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  MOZC_UPSTREAM_SHA: 13c98988247aa711d99db9e348ec2a597d14b5cd
+
+jobs:
+  build-x64:
+    runs-on: windows-2025
+    timeout-minutes: 150
+
+    steps:
+      - name: Checkout build files
+        uses: actions/checkout@v7
+
+      - name: Checkout upstream Mozc
+        uses: actions/checkout@v7
+        with:
+          repository: google/mozc
+          ref: ${{ env.MOZC_UPSTREAM_SHA }}
+          path: upstream-mozc
+          submodules: false
+          persist-credentials: false
+
+      - name: Add ni as conjunction
+        shell: pwsh
+        run: |
+          ./mozc-patches/add-ni-conjunction.ps1 -MozcRoot "$env:GITHUB_WORKSPACE\upstream-mozc"
+          $words = "$env:GITHUB_WORKSPACE\upstream-mozc\src\data\dictionary_manual\words.tsv"
+          $entry = "に`tに`t接続詞"
+          if (-not ((Get-Content -LiteralPath $words -Encoding UTF8) -contains $entry)) {
+            throw "Source dictionary patch verification failed."
+          }
+
+      - name: Try to restore update_deps cache
+        uses: actions/cache@v6
+        with:
+          path: upstream-mozc/src/third_party_cache
+          key: ni-conjunction-update-deps-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('upstream-mozc/src/build_tools/update_deps.py') }}
+
+      - name: Install Mozc build dependencies
+        shell: cmd
+        working-directory: .\upstream-mozc\src
+        run: |
+          python build_tools/update_deps.py
+
+      - name: Build Qt
+        shell: cmd
+        working-directory: .\upstream-mozc\src
+        run: |
+          python build_tools/build_qt.py --release --confirm_license
+
+      - name: Delete Qt source to save disk
+        shell: cmd
+        working-directory: .\upstream-mozc\src
+        run: |
+          if exist third_party\qt_src rmdir third_party\qt_src /s /q
+
+      - name: Build and verify auxiliary dictionary
+        shell: pwsh
+        working-directory: .\upstream-mozc\src
+        env:
+          ANDROID_NDK_HOME: ""
+        run: |
+          bazelisk build //data/dictionary_oss:aux_dictionary --config release_build
+          $aux = "bazel-bin\data\dictionary_oss\aux_dictionary.txt"
+          if (-not (Test-Path $aux)) {
+            throw "Generated aux_dictionary.txt was not found."
+          }
+          $pattern = "^に`t2593`t2593`t\d+`tに(?:`t.*)?$"
+          $match = Select-String -LiteralPath $aux -Pattern $pattern -Encoding UTF8
+          if (-not $match) {
+            Write-Host "Matching entries around に:"
+            Select-String -LiteralPath $aux -Pattern "^に`t" -Encoding UTF8 | Select-Object -First 20 | ForEach-Object { Write-Host $_.Line }
+            throw "The generated dictionary does not contain に as conjunction POS 2593."
+          }
+          Write-Host "Verified generated entry:"
+          $match | ForEach-Object { Write-Host $_.Line }
+
+      - name: Build Mozc Windows package
+        shell: cmd
+        working-directory: .\upstream-mozc\src
+        env:
+          ANDROID_NDK_HOME: ""
+        run: |
+          bazelisk build package --config release_build --platforms=//:windows-x86_64
+
+      - name: Prepare MSI and EXE
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $dist = "$env:GITHUB_WORKSPACE\dist"
+          New-Item -ItemType Directory -Force -Path $dist | Out-Null
+
+          $msi = "$env:GITHUB_WORKSPACE\upstream-mozc\src\bazel-bin\win32\installer\Mozc64.msi"
+          if (-not (Test-Path $msi)) { throw "Mozc64.msi was not produced." }
+          Copy-Item $msi "$dist\Mozc64-NiConjunction.msi"
+
+          $bootstrapper = "$env:GITHUB_WORKSPACE\mozc-patches\bootstrapper"
+          Copy-Item $msi "$bootstrapper\Mozc64.msi"
+          dotnet publish "$bootstrapper\MozcNiConjunctionSetup.csproj" -c Release -r win-x64 --self-contained true
+          $exe = "$bootstrapper\bin\Release\net8.0-windows\win-x64\publish\MozcNiConjunctionSetup.exe"
+          if (-not (Test-Path $exe)) { throw "Bootstrapper EXE was not produced." }
+          Copy-Item $exe "$dist\MozcNiConjunctionSetup.exe"
+
+          @(
+            "Upstream: google/mozc",
+            "Upstream commit: $env:MOZC_UPSTREAM_SHA",
+            "Patch: に -> に, POS=接続詞 (2593)",
+            "Architecture: x64",
+            "Build UTC: $([DateTime]::UtcNow.ToString('o'))"
+          ) | Set-Content -LiteralPath "$dist\build-info.txt" -Encoding UTF8
+
+          Get-FileHash "$dist\Mozc64-NiConjunction.msi" -Algorithm SHA256 |
+            ForEach-Object { "Mozc64-NiConjunction.msi SHA256=$($_.Hash)" } |
+            Add-Content -LiteralPath "$dist\build-info.txt" -Encoding UTF8
+          Get-FileHash "$dist\MozcNiConjunctionSetup.exe" -Algorithm SHA256 |
+            ForEach-Object { "MozcNiConjunctionSetup.exe SHA256=$($_.Hash)" } |
+            Add-Content -LiteralPath "$dist\build-info.txt" -Encoding UTF8
+
+          Get-Content "$dist\build-info.txt"
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: Mozc-Ni-Conjunction-x64
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
