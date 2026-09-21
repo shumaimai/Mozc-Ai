@@ -27,6 +27,7 @@
 #ifndef MOZC_REWRITER_RERANK_REWRITER_H_
 #define MOZC_REWRITER_RERANK_REWRITER_H_
 
+#include <cstdint>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -42,7 +43,7 @@ class RerankRewriter : public RewriterInterface {
 
   int capability(const ConversionRequest& request) const override;
 
-  // Reorder conversion_segment(0). Prototype bridge may block.
+  // Reorder the last conversion segment. Prototype bridge may block.
   bool Rewrite(const ConversionRequest& request,
                Segments* segments) const override;
 
@@ -70,6 +71,8 @@ class RerankRewriter : public RewriterInterface {
   };
 
   struct PendingLog {
+    std::string conversion_id;
+    int target_segment_index = -1;
     std::string reading;
     std::vector<std::string> nbest;
     std::string context_prev;
@@ -134,6 +137,7 @@ class RerankRewriter : public RewriterInterface {
   mutable int consecutive_timeouts_ = 0;
   mutable int consecutive_ok_ = 0;
   mutable int degrade_tier_ = 0;  // 0=full .. 4=Mozc-only
+  mutable std::uint64_t conversion_counter_ = 0;
 };
 
 }  // namespace mozc

@@ -468,9 +468,11 @@ bool RerankRewriter::Rewrite(const ConversionRequest& request,
   }
 
   // Rerank the last conversion segment. 「駅にきしゃ」is two segments;
-  // segment(0)-only left きしゃ on Mozc default (記者) with empty context.
+  // the scored target is recorded so Finish cannot accidentally read segment 0.
   const int conv_n = static_cast<int>(segments->conversion_segments_size());
   const int target = conv_n - 1;
+  const std::string conversion_id =
+      absl::StrCat("rerank-", ++conversion_counter_);
   Segment* segment = segments->mutable_conversion_segment(target);
   if (segment == nullptr || segment->candidates_size() == 0) {
     return false;
@@ -519,6 +521,8 @@ bool RerankRewriter::Rewrite(const ConversionRequest& request,
         context_prev.size(), reading.size(), nbest.size(),
         segments->history_segments_size(), segments->conversion_segments_size());
     std::lock_guard<std::mutex> lock(pending_mutex_);
+    pending_log_.conversion_id = conversion_id;
+    pending_log_.target_segment_index = target;
     pending_log_.reading = reading;
     pending_log_.nbest = nbest;
     pending_log_.context_prev = context_prev;
@@ -553,6 +557,8 @@ bool RerankRewriter::Rewrite(const ConversionRequest& request,
 
   {
     std::lock_guard<std::mutex> lock(pending_mutex_);
+    pending_log_.conversion_id = conversion_id;
+    pending_log_.target_segment_index = target;
     pending_log_.reading = reading;
     pending_log_.nbest = nbest;
     pending_log_.context_prev = context_prev;
@@ -584,8 +590,10 @@ void RerankRewriter::Finish(const ConversionRequest& request,
   }
 
   std::string chosen = pending.final_top1;
-  if (segments.conversion_segments_size() > 0) {
-    const Segment& seg = segments.conversion_segment(0);
+  if (pending.target_segment_index >= 0 &&
+      pending.target_segment_index < segments.conversion_segments_size()) {
+    const Segment& seg =
+        segments.conversion_segment(pending.target_segment_index);
     if (seg.candidates_size() > 0) {
       chosen = std::string(seg.candidate(0).value);
     }
@@ -963,7 +971,10 @@ void RerankRewriter::AppendConversionLog(const PendingLog& pending,
   std::strftime(ts, sizeof(ts), "%Y-%m-%dT%H:%M:%SZ", &tm);
 
   std::ostringstream ss;
-  ss << "{\"ts\":\"" << ts << "\",\"reading\":\"" << EscapeJson(pending.reading)
+  ss << "{\"ts\":\"" << ts << "\",\"conversion_id\":\""
+     << EscapeJson(pending.conversion_id)
+     << "\",\"target_segment_index\":" << pending.target_segment_index
+     << ",\"reading\":\"" << EscapeJson(pending.reading)
      << "\",\"nbest\":[";
   for (size_t i = 0; i < pending.nbest.size(); ++i) {
     if (i) {
@@ -971,12 +982,15 @@ void RerankRewriter::AppendConversionLog(const PendingLog& pending,
     }
     ss << '"' << EscapeJson(pending.nbest[i]) << '"';
   }
-  ss << "],\"chosen\":\"" << EscapeJson(chosen) << "\",\"context_prev\":\""
-     << EscapeJson(pending.context_prev) << "\",\"rerank_top1\":\""
-     << EscapeJson(pending.rerank_top1) << "\",\"final_top1\":\""
-     << EscapeJson(pending.final_top1)
+  // Raw context is intentionally omitted from the default online log.
+  ss << "],\"mozc_top1\":\""
+     << EscapeJson(pending.nbest.empty() ? "" : pending.nbest.front())
+     << "\",\"model_top1\":\"" << EscapeJson(pending.rerank_top1)
+     << "\",\"final_top1\":\"" << EscapeJson(pending.final_top1)
+     << "\",\"committed_candidate\":\"" << EscapeJson(chosen)
      << "\",\"overwritten\":" << (pending.overwritten ? "true" : "false")
-     << ",\"tau\":" << pending.tau << ",\"source\":\"ime_online\"}\n";
+     << ",\"tau\":" << pending.tau
+     << ",\"source\":\"ime_online\"}\n";
 
   std::ofstream out(log_path_, std::ios::app | std::ios::binary);
   if (!out) {

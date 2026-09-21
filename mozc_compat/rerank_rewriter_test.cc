@@ -9,6 +9,11 @@
 #include "request/conversion_request.h"
 #include "testing/gunit.h"
 
+#include <cstdio>
+#include <fstream>
+#include <string>
+#include <sys/stat.h>
+
 namespace mozc {
 namespace {
 
@@ -234,6 +239,56 @@ TEST(RerankRewriterTest, SafetyGuardModeRelaxesOnlyReadingAllowlist) {
   unsetenv("MOZC_RERANK_GUARD_MODE");
 #endif
 }
+
+#ifndef _WIN32
+TEST(RerankRewriterTest, MultiSegmentLogUsesScoredTargetSegment) {
+  const char *log_path = "/tmp/mozc_phase0_segment_log.jsonl";
+  const char *hook_path = "/tmp/mozc_phase0_segment_hook.sh";
+  std::remove(log_path);
+  {
+    std::ofstream hook(hook_path);
+    hook << "#!/bin/sh\n"
+         << "printf '%s' '{\"ranked_surfaces\":[\"汽車\",\"記者\"],"
+            "\"rerank_top1\":\"汽車\",\"final_top1\":\"汽車\","
+            "\"overwritten\":true}' > \"$2\"\n";
+  }
+  chmod(hook_path, 0700);
+  setenv("MOZC_RERANK_ENABLED", "1", 1);
+  setenv("MOZC_RERANK_LOG", log_path, 1);
+  setenv("MOZC_RERANK_HOOK_CMD",
+         "sh -c 'printf \\\"{\\\\\\\"ranked_surfaces\\\\\\\":[\\\\\\\"汽車\\\\\\\",\\\\\\\"記者\\\\\\\"],\\\\\\\"rerank_top1\\\\\\\":\\\\\\\"汽車\\\\\\\",\\\\\\\"final_top1\\\\\\\":\\\\\\\"汽車\\\\\\\",\\\\\\\"overwritten\\\\\\\":true}\\\" > \\\"$1\\\"' _",
+         1);
+  setenv("MOZC_RERANK_HOOK_CMD", hook_path, 1);
+  unsetenv("MOZC_RERANK_DAEMON_ADDR");
+
+  RerankRewriter rewriter;
+  const ConversionRequest req = MakeConversionRequest();
+  Segments segments;
+  Segment *first = segments.add_segment();
+  first->set_key("えき");
+  first->add_candidate()->value = "駅";
+  Segment *target = segments.add_segment();
+  target->set_key("きしゃ");
+  target->add_candidate()->value = "記者";
+  target->add_candidate()->value = "汽車";
+
+  EXPECT_TRUE(rewriter.Rewrite(req, &segments));
+  EXPECT_EQ(segments.conversion_segment(1).candidate(0).value, "汽車");
+  rewriter.Finish(req, segments);
+
+  std::ifstream in(log_path);
+  std::string line;
+  std::getline(in, line);
+  EXPECT_NE(line.find("\"target_segment_index\":1"), std::string::npos);
+  EXPECT_NE(line.find("\"mozc_top1\":\"記者\""), std::string::npos);
+  EXPECT_NE(line.find("\"model_top1\":\"汽車\""), std::string::npos);
+  EXPECT_NE(line.find("\"committed_candidate\":\"汽車\""), std::string::npos);
+  std::remove(log_path);
+  std::remove(hook_path);
+  unsetenv("MOZC_RERANK_LOG");
+  unsetenv("MOZC_RERANK_HOOK_CMD");
+}
+#endif
 
 }  // namespace
 }  // namespace mozc
