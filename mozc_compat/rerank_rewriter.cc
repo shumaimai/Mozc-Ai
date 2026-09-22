@@ -582,15 +582,19 @@ bool RerankRewriter::Rewrite(const ConversionRequest& request,
       }
     }
   }
+  std::vector<std::string> conversion_prefix_top1;
+  conversion_prefix_top1.reserve(target);
   for (int i = 0; i < target; ++i) {
     const Segment& prev = segments->conversion_segment(i);
     if (prev.candidates_size() > 0) {
-      history.append(prev.candidate(0).value);
+      conversion_prefix_top1.emplace_back(prev.candidate(0).value);
     }
   }
   const int ctx_n = EffectiveContextChars();
   const std::string context_prev =
-      (ctx_n <= 0) ? std::string() : rerank::CleanContext(history, ctx_n);
+      (ctx_n <= 0) ? std::string()
+                   : rerank::BuildRuntimeContext(history,
+                                                 conversion_prefix_top1, ctx_n);
 
   const std::string skip = rerank::RerankSkipReason(reading, context_prev);
   if (!skip.empty()) {

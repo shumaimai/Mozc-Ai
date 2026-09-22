@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace mozc {
 namespace rerank {
@@ -19,6 +20,13 @@ std::string CleanContext(std::string_view text, int max_chars = 50);
 // Left context of full_text[:token_char_start] then CleanContext.
 std::string ClipContextPrev(std::string_view full_text, int token_char_start,
                             int max_chars = 50);
+
+// Exact RerankRewriter context assembly: committed surrounding text followed
+// by rank-0 Mozc values of earlier conversion segments.
+std::string BuildRuntimeContext(
+    std::string_view preceding_text,
+    const std::vector<std::string>& conversion_prefix_top1,
+    int max_chars = 50);
 
 // Hiragana + a practical NFKC subset (fullwidth ASCII). Not used on context.
 std::string NormalizeReading(std::string_view text);

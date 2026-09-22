@@ -223,6 +223,12 @@ TEST(RerankRewriterTest, GuardSkipReasons) {
   EXPECT_FALSE(rerank::IsJunkSurface("予選"));
 }
 
+TEST(RerankRewriterTest, RuntimeContextUsesMozcTop1ForEarlierSegments) {
+  EXPECT_EQ(rerank::BuildRuntimeContext("前文。", {"駅に", "電車で"}),
+            "駅に電車で");
+  EXPECT_EQ(rerank::BuildRuntimeContext("新聞の", {}), "新聞の");
+}
+
 TEST(RerankRewriterTest, SafetyGuardModeRelaxesOnlyReadingAllowlist) {
 #ifdef _WIN32
   _putenv_s("MOZC_RERANK_GUARD_MODE", "safety");
