@@ -136,3 +136,9 @@ Mozc由来コードにはMozcのBSDライセンス、基盤モデルにはMITラ
 
 変更点と検証結果は
 [`docs/RELEASE_NOTES_V1.0.2.md`](docs/RELEASE_NOTES_V1.0.2.md) を参照してください。
+
+## 開発支援への謝辞
+
+- **ChatGPT (OpenAI)** — 日本語IMEのリランカーについて、評価・設計・実装方針の検討を支援しました（[v2設計PR #16](https://github.com/shumaimai/Mozc-Ai/pull/16)）。
+
+AIによる支援の記録であり、Gitコミットの著者・責任者やOpenAIによる公式な承認を意味しません。
