@@ -7,6 +7,8 @@
 #include "rewriter/rerank_margin.h"
 
 #include <algorithm>
+#include <atomic>
+#include <cctype>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
@@ -24,14 +26,19 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "converter/segments.h"
+#include "converter/attribute.h"
 #include "request/conversion_request.h"
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#include <windows.h>
 #include <process.h>
 #pragma comment(lib, "ws2_32.lib")
 #define MOZC_RERANK_GETPID() _getpid()
@@ -51,6 +58,8 @@ using RerankSocket = int;
 namespace mozc {
 namespace {
 
+std::atomic<std::uint64_t> g_hook_request_counter{0};
+
 std::string GetEnvOrEmpty(const char* name) {
   const char* v = std::getenv(name);
   return v == nullptr ? std::string() : std::string(v);
@@ -62,6 +71,68 @@ bool EnvTruthy(const std::string& v) {
   }
   std::string lower = std::string(absl::AsciiStrToLower(v));
   return lower == "1" || lower == "true" || lower == "yes" || lower == "on";
+}
+
+bool IsPunctuationOrSymbol(const converter::Candidate& candidate) {
+  if (candidate.category == converter::Candidate::SYMBOL) {
+    return true;
+  }
+  if (candidate.value.empty()) {
+    return false;
+  }
+  for (unsigned char c : candidate.value) {
+    if (c >= 0x80) {
+      return false;
+    }
+    if (std::isalnum(c) || std::isspace(c)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool IsAiOverwriteProtected(const converter::Candidate& candidate) {
+  constexpr uint32_t kHardAttributes =
+      converter::Attribute::USER_SEGMENT_HISTORY_REWRITER |
+      converter::Attribute::RERANKED | converter::Attribute::NUMBER |
+      converter::Attribute::NO_MODIFICATION | converter::Attribute::NO_DELETABLE;
+  return (candidate.attributes & kHardAttributes) != 0 ||
+         IsPunctuationOrSymbol(candidate);
+}
+
+// The pinned Mozc base predates Candidate::effective_converted_segment_count;
+// derive the same clamp-to-1 count from the inner segment boundary.
+int EffectiveConvertedSegmentCount(const converter::Candidate& candidate) {
+  return static_cast<int>(
+      std::max<size_t>(1, candidate.inner_segments().size()));
+}
+
+const char* CandidateCategoryName(converter::Candidate::Category category) {
+  switch (category) {
+    case converter::Candidate::DEFAULT_CATEGORY:
+      return "DEFAULT";
+    case converter::Candidate::SYMBOL:
+      return "SYMBOL";
+    case converter::Candidate::OTHER:
+      return "OTHER";
+  }
+  return "OTHER";
+}
+
+const char* CandidateProtectionName(const converter::Candidate& candidate) {
+  constexpr uint32_t kHistoryOrSafety =
+      converter::Attribute::USER_SEGMENT_HISTORY_REWRITER |
+      converter::Attribute::RERANKED | converter::Attribute::NUMBER |
+      converter::Attribute::NO_MODIFICATION | converter::Attribute::NO_DELETABLE;
+  if ((candidate.attributes & kHistoryOrSafety) != 0 ||
+      IsPunctuationOrSymbol(candidate)) {
+    return "HARD_PROTECT";
+  }
+  if ((candidate.attributes & (converter::Attribute::USER_DICTIONARY |
+                              converter::Attribute::CONTEXT_SENSITIVE)) != 0) {
+    return "DELTA_ONLY";
+  }
+  return "NORMAL";
 }
 
 // Optional privacy-safe runtime diagnostics.  This deliberately records only
@@ -121,6 +192,56 @@ std::string JoinPath(const std::string& dir, const std::string& name) {
     return dir + name;
   }
   return dir + sep + name;
+}
+
+bool FileExists(const std::string& path) {
+  std::ifstream in(path, std::ios::binary);
+  return static_cast<bool>(in);
+}
+
+// Directory of the running executable, or empty when unavailable.
+std::string ExeDir() {
+#ifdef _WIN32
+  char path[MAX_PATH];
+  const DWORD n = GetModuleFileNameA(nullptr, path, MAX_PATH);
+  if (n == 0 || n >= MAX_PATH) {
+    return std::string();
+  }
+  std::string full(path, n);
+#else
+  char path[4096];
+  const ssize_t n = readlink("/proc/self/exe", path, sizeof(path) - 1);
+  if (n <= 0) {
+    return std::string();
+  }
+  const std::string full(path, static_cast<size_t>(n));
+#endif
+  const size_t sep = full.find_last_of("/\\");
+  if (sep == std::string::npos || sep == 0) {
+    return std::string();
+  }
+  return full.substr(0, sep);
+}
+
+// Shipped policy next to the installed daemon: <exe_dir>/ai/model/
+// margin_policy.json when run from the all-in-one MSI layout, or
+// <exe_dir>/model/margin_policy.json for a standalone daemon directory.
+std::string DefaultPolicyPath() {
+  const std::string dir = ExeDir();
+  if (dir.empty()) {
+    return std::string();
+  }
+  const std::string shipped =
+      JoinPath(JoinPath(dir, "ai"), JoinPath("model", "margin_policy.json"));
+  if (FileExists(shipped)) {
+    return shipped;
+  }
+  const std::string local =
+      JoinPath(dir, JoinPath("model", "margin_policy.json"));
+  if (FileExists(local)) {
+    return local;
+  }
+  return std::string();
 }
 
 bool ReadFileToString(const std::string& path, std::string* out) {
@@ -318,6 +439,11 @@ void RerankRewriter::LoadConfigFromEnv() {
   }
   log_path_ = GetEnvOrEmpty("MOZC_RERANK_LOG");
   policy_path_ = GetEnvOrEmpty("MOZC_RERANK_POLICY");
+  if (policy_path_.empty()) {
+    // Shipped all-in-one layout: read the bundled margin_policy.json so the
+    // server-side guard mode stays consistent with the daemon policy.
+    policy_path_ = DefaultPolicyPath();
+  }
   if (!policy_path_.empty()) {
     LoadPolicyFile(policy_path_);
   }
@@ -399,6 +525,10 @@ void RerankRewriter::LoadPolicyFile(const std::string& path) {
   if (cc > 0) {
     context_chars_ = static_cast<int>(cc);
   }
+  std::string policy_guard_mode;
+  if (ExtractJsonString(json, "guard_mode", &policy_guard_mode)) {
+    rerank::SetPolicyGuardMode(policy_guard_mode);
+  }
 }
 
 void RerankRewriter::NoteTimeout() const {
@@ -468,9 +598,14 @@ bool RerankRewriter::Rewrite(const ConversionRequest& request,
   }
 
   // Rerank the last conversion segment. 「駅にきしゃ」is two segments;
-  // segment(0)-only left きしゃ on Mozc default (記者) with empty context.
+  // the scored target is recorded so Finish cannot accidentally read segment 0.
   const int conv_n = static_cast<int>(segments->conversion_segments_size());
   const int target = conv_n - 1;
+  std::string conversion_id;
+  {
+    std::lock_guard<std::mutex> lock(pending_mutex_);
+    conversion_id = absl::StrCat("rerank-", ++conversion_counter_);
+  }
   Segment* segment = segments->mutable_conversion_segment(target);
   if (segment == nullptr || segment->candidates_size() == 0) {
     return false;
@@ -484,11 +619,26 @@ bool RerankRewriter::Rewrite(const ConversionRequest& request,
 
   const int cap = EffectiveCandCap();
   std::vector<std::string> nbest;
+  std::vector<PendingLog::CandidateMetadata> candidate_metadata;
   const int n = std::min(cap, static_cast<int>(segment->candidates_size()));
   nbest.reserve(n);
   for (int i = 0; i < n; ++i) {
-    nbest.push_back(std::string(segment->candidate(i).value));
+    const converter::Candidate& candidate = segment->candidate(i);
+    nbest.push_back(std::string(candidate.value));
+    PendingLog::CandidateMetadata metadata;
+    metadata.surface = std::string(candidate.value);
+    metadata.rank = i;
+    metadata.cost = candidate.cost;
+    metadata.cost_delta = candidate.cost - segment->candidate(0).cost;
+    metadata.lid = candidate.lid;
+    metadata.rid = candidate.rid;
+    metadata.attributes = candidate.attributes;
+    metadata.category = CandidateCategoryName(candidate.category);
+    metadata.converted_segment_count = EffectiveConvertedSegmentCount(candidate);
+    metadata.protection = CandidateProtectionName(candidate);
+    candidate_metadata.push_back(std::move(metadata));
   }
+  const bool protected_mozc_top1 = IsAiOverwriteProtected(segment->candidate(0));
 
   // The application-provided surrounding text is authoritative and remains
   // available even when Mozc cannot reconstruct converter history.  Falling
@@ -502,15 +652,19 @@ bool RerankRewriter::Rewrite(const ConversionRequest& request,
       }
     }
   }
+  std::vector<std::string> conversion_prefix_top1;
+  conversion_prefix_top1.reserve(target);
   for (int i = 0; i < target; ++i) {
     const Segment& prev = segments->conversion_segment(i);
     if (prev.candidates_size() > 0) {
-      history.append(prev.candidate(0).value);
+      conversion_prefix_top1.emplace_back(prev.candidate(0).value);
     }
   }
   const int ctx_n = EffectiveContextChars();
   const std::string context_prev =
-      (ctx_n <= 0) ? std::string() : rerank::CleanContext(history, ctx_n);
+      (ctx_n <= 0) ? std::string()
+                   : rerank::BuildRuntimeContext(history,
+                                                 conversion_prefix_top1, ctx_n);
 
   const std::string skip = rerank::RerankSkipReason(reading, context_prev);
   if (!skip.empty()) {
@@ -519,14 +673,17 @@ bool RerankRewriter::Rewrite(const ConversionRequest& request,
         context_prev.size(), reading.size(), nbest.size(),
         segments->history_segments_size(), segments->conversion_segments_size());
     std::lock_guard<std::mutex> lock(pending_mutex_);
-    pending_log_.reading = reading;
-    pending_log_.nbest = nbest;
-    pending_log_.context_prev = context_prev;
-    pending_log_.rerank_top1 = nbest.front();
-    pending_log_.final_top1 = nbest.front();
-    pending_log_.overwritten = false;
-    pending_log_.tau = tau_;
-    has_pending_log_ = true;
+    PendingLog &pending = pending_logs_[std::this_thread::get_id()];
+    pending.conversion_id = conversion_id;
+    pending.target_segment_index = target;
+    pending.reading = reading;
+    pending.nbest = nbest;
+    pending.candidate_metadata = candidate_metadata;
+    pending.context_prev = context_prev;
+    pending.rerank_top1 = nbest.front();
+    pending.final_top1 = nbest.front();
+    pending.overwritten = false;
+    pending.tau = tau_;
     return false;
   }
 
@@ -548,19 +705,27 @@ bool RerankRewriter::Rewrite(const ConversionRequest& request,
     result.final_top1 = nbest.front();
     result.ranked_surfaces = nbest;
   }
+  if (result.overwritten && protected_mozc_top1) {
+    result.overwritten = false;
+    result.final_top1 = nbest.front();
+    result.ranked_surfaces = nbest;
+  }
 
   const bool changed = ReorderSegment(segment, result.ranked_surfaces);
 
   {
     std::lock_guard<std::mutex> lock(pending_mutex_);
-    pending_log_.reading = reading;
-    pending_log_.nbest = nbest;
-    pending_log_.context_prev = context_prev;
-    pending_log_.rerank_top1 = result.rerank_top1;
-    pending_log_.final_top1 = result.final_top1;
-    pending_log_.overwritten = result.overwritten;
-    pending_log_.tau = tau_;
-    has_pending_log_ = true;
+    PendingLog &pending = pending_logs_[std::this_thread::get_id()];
+    pending.conversion_id = conversion_id;
+    pending.target_segment_index = target;
+    pending.reading = reading;
+    pending.nbest = nbest;
+    pending.candidate_metadata = candidate_metadata;
+    pending.context_prev = context_prev;
+    pending.rerank_top1 = result.rerank_top1;
+    pending.final_top1 = result.final_top1;
+    pending.overwritten = result.overwritten;
+    pending.tau = tau_;
   }
 
   return changed;
@@ -576,16 +741,19 @@ void RerankRewriter::Finish(const ConversionRequest& request,
   PendingLog pending;
   {
     std::lock_guard<std::mutex> lock(pending_mutex_);
-    if (!has_pending_log_) {
+    const auto it = pending_logs_.find(std::this_thread::get_id());
+    if (it == pending_logs_.end()) {
       return;
     }
-    pending = pending_log_;
-    has_pending_log_ = false;
+    pending = it->second;
+    pending_logs_.erase(it);
   }
 
   std::string chosen = pending.final_top1;
-  if (segments.conversion_segments_size() > 0) {
-    const Segment& seg = segments.conversion_segment(0);
+  if (pending.target_segment_index >= 0 &&
+      pending.target_segment_index < segments.conversion_segments_size()) {
+    const Segment& seg =
+        segments.conversion_segment(pending.target_segment_index);
     if (seg.candidates_size() > 0) {
       chosen = std::string(seg.candidate(0).value);
     }
@@ -595,8 +763,7 @@ void RerankRewriter::Finish(const ConversionRequest& request,
 
 void RerankRewriter::Clear() {
   std::lock_guard<std::mutex> lock(pending_mutex_);
-  has_pending_log_ = false;
-  pending_log_ = PendingLog{};
+  pending_logs_.clear();
 }
 
 bool RerankRewriter::CallHookWithTimeout(const std::string& reading,
@@ -679,7 +846,9 @@ bool RerankRewriter::CallHook(const std::string& reading,
     return false;
   }
 
-  const std::string base = absl::StrCat("mozc_rerank_", MOZC_RERANK_GETPID());
+  const std::string base = absl::StrCat(
+      "mozc_rerank_", MOZC_RERANK_GETPID(), "_",
+      g_hook_request_counter.fetch_add(1, std::memory_order_relaxed));
   const std::string req_path = JoinPath(TempDir(), base + "_req.json");
   const std::string resp_path = JoinPath(TempDir(), base + "_resp.json");
   DeleteFileQuiet(resp_path);
@@ -963,7 +1132,10 @@ void RerankRewriter::AppendConversionLog(const PendingLog& pending,
   std::strftime(ts, sizeof(ts), "%Y-%m-%dT%H:%M:%SZ", &tm);
 
   std::ostringstream ss;
-  ss << "{\"ts\":\"" << ts << "\",\"reading\":\"" << EscapeJson(pending.reading)
+  ss << "{\"ts\":\"" << ts << "\",\"conversion_id\":\""
+     << EscapeJson(pending.conversion_id)
+     << "\",\"target_segment_index\":" << pending.target_segment_index
+     << ",\"reading\":\"" << EscapeJson(pending.reading)
      << "\",\"nbest\":[";
   for (size_t i = 0; i < pending.nbest.size(); ++i) {
     if (i) {
@@ -971,12 +1143,33 @@ void RerankRewriter::AppendConversionLog(const PendingLog& pending,
     }
     ss << '"' << EscapeJson(pending.nbest[i]) << '"';
   }
-  ss << "],\"chosen\":\"" << EscapeJson(chosen) << "\",\"context_prev\":\""
-     << EscapeJson(pending.context_prev) << "\",\"rerank_top1\":\""
-     << EscapeJson(pending.rerank_top1) << "\",\"final_top1\":\""
-     << EscapeJson(pending.final_top1)
+  ss << "],\"candidate_metadata\":[";
+  for (size_t i = 0; i < pending.candidate_metadata.size(); ++i) {
+    if (i) {
+      ss << ',';
+    }
+    const auto& c = pending.candidate_metadata[i];
+    ss << "{\"surface\":\"" << EscapeJson(c.surface)
+       << "\",\"rank\":" << c.rank
+       << ",\"cost\":" << c.cost
+       << ",\"cost_delta\":" << c.cost_delta
+       << ",\"lid\":" << c.lid
+       << ",\"rid\":" << c.rid
+       << ",\"attributes\":" << c.attributes
+       << ",\"category\":\"" << c.category
+       << "\",\"converted_segment_count\":"
+       << c.converted_segment_count
+       << ",\"protection\":\"" << c.protection << "\"}";
+  }
+  // Raw context is intentionally omitted from the default online log.
+  ss << "],\"mozc_top1\":\""
+     << EscapeJson(pending.nbest.empty() ? "" : pending.nbest.front())
+     << "\",\"model_top1\":\"" << EscapeJson(pending.rerank_top1)
+     << "\",\"final_top1\":\"" << EscapeJson(pending.final_top1)
+     << "\",\"committed_candidate\":\"" << EscapeJson(chosen)
      << "\",\"overwritten\":" << (pending.overwritten ? "true" : "false")
-     << ",\"tau\":" << pending.tau << ",\"source\":\"ime_online\"}\n";
+     << ",\"tau\":" << pending.tau
+     << ",\"source\":\"ime_online\"}\n";
 
   std::ofstream out(log_path_, std::ios::app | std::ios::binary);
   if (!out) {

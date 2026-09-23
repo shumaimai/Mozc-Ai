@@ -58,14 +58,15 @@ if (-not $serverPath -or -not (Test-Path $serverPath)) {
     try {
         $content = [System.IO.File]::ReadAllBytes($serverPath)
         $text = [System.Text.Encoding]::ASCII.GetString($content)
-        if ($text -match "AIRewriter") {
-            $lines += "OK: AIRewriter marker found in binary"
+        if ($text -match "RerankRewriter" -and $text -match "127\.0\.0\.1:17890") {
+            $lines += "OK: local reranker markers found in binary"
         } else {
-            $lines += "FAIL: AIRewriter marker NOT found (non-AI binary?)"
+            $lines += "FAIL: local reranker markers NOT found (non-AI binary?)"
             $ok = $false
         }
-        if ($text -match "deepseek") {
-            $lines += "OK: deepseek backend marker found"
+        if ($text -match "deepseek|aliyuncs|token-plan") {
+            $lines += "FAIL: cloud backend marker found (v1 must be local-only)"
+            $ok = $false
         }
     } catch {
         $lines += "WARN: Could not scan binary: $_"

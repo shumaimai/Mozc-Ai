@@ -10,9 +10,10 @@ import shutil
 import sys
 from pathlib import Path
 
-PRODUCT_VERSION = "1.0.2"
-MSI_FILE = f"MozcAI-{PRODUCT_VERSION}-x64.msi"
-PRODUCT_NAME = "Mozc AI"
+PRODUCT_VERSION = "1.0.3"
+TEST_SUFFIX = "test1"
+MSI_FILE = f"MozcAI-{PRODUCT_VERSION}-{TEST_SUFFIX}-x64.msi"
+PRODUCT_NAME = "Mozc AI Test"
 MANUFACTURER = "Mozc AI Project"
 UPGRADE_CODE = "2917DE59-7EFA-46A3-B16A-1EE0BBEADBA4"
 LEGACY_MOZC_UPGRADE_CODE = "DD94B570-B5E2-4100-9D42-61930C611D8A"
@@ -131,6 +132,8 @@ def patch_installer_build(mozc_src: Path, dry_run: bool) -> None:
         "Mozc64.msi",
         "MozcAI-1.0.0-x64.msi",
         "MozcAI-1.0.1-x64.msi",
+        "MozcAI-1.0.2-x64.msi",
+        "MozcAI-1.0.3-test1-x64.msi",
     ):
         text = text.replace(
             f'_MSI_FILE = "{previous}" if BRANDING == "Mozc" else "GoogleJapaneseInput64.msi"',
@@ -274,18 +277,10 @@ def patch_installer_wxs(mozc_src: Path, dry_run: bool) -> None:
             1,
         )
 
-    if '<ComponentRef Id="LegacyPersonalRerankCleanup" />' not in text:
-        marker = '<ComponentRef Id="PrelaunchProcessesV1" />'
-        if marker not in text:
-            raise RuntimeError("Could not find startup component reference")
-        text = text.replace(
-            marker,
-            marker + '\n      <ComponentRef Id="LegacyPersonalRerankCleanup" />',
-            1,
-        )
-
     # Do not reuse the upstream component/value identity: the legacy product
-    # removes its identically named Run value during migration.
+    # removes its identically named Run value during migration.  Rename the
+    # upstream prelaunch component BEFORE anchoring the cleanup reference on
+    # the V1 identity - a fresh clone has no V1 marker yet.
     text = text.replace(
         '<ComponentRef Id="PrelaunchProcesses" />',
         '<ComponentRef Id="PrelaunchProcessesV1" />',
@@ -296,6 +291,16 @@ def patch_installer_wxs(mozc_src: Path, dry_run: bool) -> None:
         '<Component Id="PrelaunchProcessesV1" Directory="TARGETDIR">',
         1,
     )
+
+    if '<ComponentRef Id="LegacyPersonalRerankCleanup" />' not in text:
+        marker = '<ComponentRef Id="PrelaunchProcessesV1" />'
+        if marker not in text:
+            raise RuntimeError("Could not find startup component reference")
+        text = text.replace(
+            marker,
+            marker + '\n      <ComponentRef Id="LegacyPersonalRerankCleanup" />',
+            1,
+        )
 
     run_marker = (
         '<RegistryValue Id="RunBroker" Root="HKLM" '

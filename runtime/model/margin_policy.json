@@ -7,6 +7,7 @@
   "top_k": null,
   "timeout_ms": 200,
   "context_clip_max_chars": 50,
+  "guard_mode": "safety",
   "base_model": "sbintuitions/modernbert-ja-30m",
-  "note": "Contextual Track B ship policy (NEXT_TASK_PHASE3_CTX). Do not use int8."
+  "note": "Phase 2 format_v2 frozen model (sha256 00738ecf...). Guard mode precedence: MOZC_RERANK_GUARD_MODE env > guard_mode here > built-in default (safety). Do not use int8."
 }

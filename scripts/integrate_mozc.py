@@ -14,6 +14,7 @@ REWRITER_FILES = (
     "rerank_rewriter_test.cc",
     "context_clip.h",
     "context_clip.cc",
+    "context_clip_cli.cc",
     "rerank_guard.h",
     "rerank_guard.cc",
     "rerank_eligible_readings.inc",
@@ -139,6 +140,16 @@ def patch_rewriter_cc(mozc_src: Path, dry_run: bool) -> None:
 
 
 def patch_engine_converter_context(mozc_src: Path, dry_run: bool) -> None:
+    # Recent Mozc revisions pass commands::Context directly to every
+    # ConversionRequestBuilder via SetContextView(context).  The historical
+    # latest_client_context_ bridge is only needed by older revisions; do not
+    # require the removed SuggestWithPreferences API on current Mozc.
+    source = mozc_src / "engine" / "engine_converter.cc"
+    source_text = source.read_text(encoding="utf-8")
+    if "SetContextView(context)" in source_text:
+        print(f"skip legacy context bridge for modern API: {source}")
+        return
+
     header = mozc_src / "engine" / "engine_converter.h"
     header_text = header.read_text(encoding="utf-8")
     if "latest_client_context_" not in header_text:
@@ -157,7 +168,6 @@ def patch_engine_converter_context(mozc_src: Path, dry_run: bool) -> None:
         if not dry_run:
             header.write_text(header_text, encoding="utf-8")
 
-    source = mozc_src / "engine" / "engine_converter.cc"
     text = source.read_text(encoding="utf-8")
     changed = False
     start = "void EngineConverter::OnStartComposition(const commands::Context& context) {\n"

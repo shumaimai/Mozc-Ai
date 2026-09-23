@@ -415,6 +415,17 @@ std::string ClipContextPrev(std::string_view full_text, int token_char_start,
   return CleanContext(U32ToUtf8(left), max_chars);
 }
 
+std::string BuildRuntimeContext(
+    std::string_view preceding_text,
+    const std::vector<std::string>& conversion_prefix_top1,
+    int max_chars) {
+  std::string history(preceding_text);
+  for (const std::string& surface : conversion_prefix_top1) {
+    history.append(surface);
+  }
+  return CleanContext(history, max_chars);
+}
+
 std::string NormalizeReading(std::string_view text) {
   if (text.empty()) {
     return "";
