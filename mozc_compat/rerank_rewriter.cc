@@ -100,6 +100,13 @@ bool IsAiOverwriteProtected(const converter::Candidate& candidate) {
          IsPunctuationOrSymbol(candidate);
 }
 
+// The pinned Mozc base predates Candidate::effective_converted_segment_count;
+// derive the same clamp-to-1 count from the inner segment boundary.
+int EffectiveConvertedSegmentCount(const converter::Candidate& candidate) {
+  return static_cast<int>(
+      std::max<size_t>(1, candidate.inner_segments().size()));
+}
+
 const char* CandidateCategoryName(converter::Candidate::Category category) {
   switch (category) {
     case converter::Candidate::DEFAULT_CATEGORY:
@@ -627,7 +634,7 @@ bool RerankRewriter::Rewrite(const ConversionRequest& request,
     metadata.rid = candidate.rid;
     metadata.attributes = candidate.attributes;
     metadata.category = CandidateCategoryName(candidate.category);
-    metadata.converted_segment_count = candidate.effective_converted_segment_count();
+    metadata.converted_segment_count = EffectiveConvertedSegmentCount(candidate);
     metadata.protection = CandidateProtectionName(candidate);
     candidate_metadata.push_back(std::move(metadata));
   }
