@@ -4,6 +4,12 @@ Mozc AI は、Mozc に日本語文脈リランカーを統合した Windows 向�
 v1.0.2 は Mozc、ローカル推論ランタイム、ONNXモデル、トークナイザーを1つの
 MSIに収録しており、Ollama、Python、クラウドAPIはインストール後に不要です。
 
+> **テストビルドのお知らせ (1.0.3-test1)**: Phase 2凍結モデルと
+> safety既定guardを同梱したテストMSIをCI Artifactとして提供しています
+> （正式リリースではありません）。インストール前後の確認手順、
+> v1.0.2への戻し方は [docs/WINDOWS_TEST_BUILD.md](docs/WINDOWS_TEST_BUILD.md)
+> を参照してください。
+
 ## v1.0.2 の要点
 
 - 配布物: `MozcAI-1.0.2-x64.msi`

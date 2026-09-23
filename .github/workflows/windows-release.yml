@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "既存ReleaseへMSIを追加する場合のタグ（例: v1.0.2）"
+        description: "既存ReleaseへMSIを追加する場合のタグ（例: v1.0.3-test1）"
         required: false
         default: ""
 
@@ -70,7 +70,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $msi = (Resolve-Path "dist/MozcAI-1.0.2-x64.msi").Path
+          $msi = (Resolve-Path "dist/MozcAI-1.0.3-test1-x64.msi").Path
           $audit = Join-Path $env:RUNNER_TEMP "mozc-v1-msi-audit"
           New-Item -ItemType Directory -Path $audit -Force | Out-Null
           $process = Start-Process msiexec.exe -ArgumentList @(
@@ -81,12 +81,17 @@ jobs:
           }
 
           $root = Join-Path $audit "PFiles64/Mozc"
+          "audit_root=$root" >> $env:GITHUB_OUTPUT
           $required = @(
             "mozc_server.exe",
             "mozc_tip64.dll",
             "ai/rerank_daemon.exe",
             "ai/model/cross_encoder_fp32.onnx",
+            "ai/model/SHA256SUMS",
+            "ai/model/tokenizer/tokenizer.json",
             "ai/model/tokenizer/tokenizer.model",
+            "ai/model/tokenizer/tokenizer_config.json",
+            "ai/model/tokenizer/special_tokens_map.json",
             "ai/model/margin_policy.json",
             "ai/model/MODEL_LICENSE.txt",
             "ai/model/PROVENANCE.md"
@@ -107,30 +112,108 @@ jobs:
 
           $model = Join-Path $root "ai/model/cross_encoder_fp32.onnx"
           if ((Get-Item $model).Length -lt 100MB) { throw "ONNX model is unexpectedly small" }
+          $head = [byte[]]::new(32)
+          $stream = [IO.File]::OpenRead($model)
+          try { [void]$stream.Read($head, 0, $head.Length) } finally { $stream.Dispose() }
+          if ([Text.Encoding]::ASCII.GetString($head).StartsWith("version https://git-lfs")) {
+            throw "MSI payload contains a Git LFS pointer stub, not the model"
+          }
+
+          # Pin the extracted payload to ai/model/SHA256SUMS byte-for-byte.
+          foreach ($line in Get-Content -LiteralPath (Join-Path $root "ai/model/SHA256SUMS")) {
+            if (-not $line.Trim()) { continue }
+            $parts = $line -split '\s+', 2
+            $expected = $parts[0].ToLowerInvariant()
+            $rel = $parts[1].Trim().TrimStart('*')
+            $file = Join-Path (Join-Path $root "ai/model") ($rel -replace '/', '\')
+            if (-not (Test-Path -LiteralPath $file)) { throw "MSI payload missing SHA256SUMS entry: $rel" }
+            $actual = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actual -ne $expected) {
+              throw "MSI payload hash mismatch: $rel (expected $expected, got $actual)"
+            }
+          }
+          Write-Host "MSI payload SHA256SUMS verified"
+
           $hash = (Get-FileHash $msi -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$hash  MozcAI-1.0.2-x64.msi" | Set-Content -Encoding ascii "dist/MozcAI-1.0.2-x64.msi.sha256"
+          "$hash  MozcAI-1.0.3-test1-x64.msi" | Set-Content -Encoding ascii "dist/MozcAI-1.0.3-test1-x64.msi.sha256"
           "sha256=$hash" >> $env:GITHUB_OUTPUT
           Write-Host "MSI audit passed: $hash"
+
+      - name: Daemon smoke test on extracted payload
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $root = "${{ steps.audit.outputs.audit_root }}"
+          $daemon = Join-Path $root "ai/rerank_daemon.exe"
+          if (-not (Test-Path $daemon)) { throw "Daemon not found: $daemon" }
+          $proc = Start-Process -FilePath $daemon -ArgumentList "--port","17891" -WindowStyle Hidden -PassThru
+          try {
+            $ready = $false
+            foreach ($i in 1..120) {
+              Start-Sleep -Milliseconds 1000
+              try {
+                $c = [Net.Sockets.TcpClient]::new("127.0.0.1", 17891)
+                $c.ReceiveTimeout = 60000
+                try {
+                  $s = $c.GetStream()
+                  $b = [Text.Encoding]::UTF8.GetBytes('{"op":"ping"}' + "`n")
+                  $s.Write($b, 0, $b.Length)
+                  $r = [IO.StreamReader]::new($s, [Text.Encoding]::UTF8)
+                  $line = $r.ReadLine()
+                  $r.Dispose()
+                  if ($line -match '"op"\s*:\s*"pong"') { $ready = $true; break }
+                } finally { $c.Dispose() }
+              } catch { }
+            }
+            if (-not $ready) { throw "Daemon did not answer ping within 60s" }
+            Write-Host "Daemon ping OK"
+
+            function Invoke-Rerank([string]$json) {
+              $c = [Net.Sockets.TcpClient]::new("127.0.0.1", 17891)
+              $c.ReceiveTimeout = 120000
+              try {
+                $s = $c.GetStream()
+                $b = [Text.Encoding]::UTF8.GetBytes($json + "`n")
+                $s.Write($b, 0, $b.Length)
+                $r = [IO.StreamReader]::new($s, [Text.Encoding]::UTF8)
+                $line = $r.ReadLine()
+                $r.Dispose()
+                return $line | ConvertFrom-Json
+              } finally { $c.Dispose() }
+            }
+
+            # Synthetic conversion (fixed strings only): the bundled model
+            # must actually run for this request.
+            $resp = Invoke-Rerank '{"reading":"きしゃ","context_prev":"駅に","nbest":["記者","汽車"]}'
+            Write-Host "rerank response: $($resp | ConvertTo-Json -Compress)"
+            if ($resp.ok -ne $true) { throw "Daemon rerank failed: ok != true" }
+            if ($resp.guard_skip -ne $false) { throw "Model did not run: guard_skip=true (guard or model packaging broken)" }
+            if (-not $resp.ranked_surfaces -or @($resp.ranked_surfaces).Count -eq 0) { throw "Daemon returned no ranked_surfaces" }
+            if ($null -eq $resp.margin) { throw "Daemon response lacks margin; scoring did not execute" }
+            Write-Host "Daemon smoke OK: ok=true guard_skip=false margin=$($resp.margin)"
+          } finally {
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+          }
 
       - name: Upload verified artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MozcAI-1.0.2-x64
+          name: MozcAI-1.0.3-test1-x64
           path: |
-            dist/MozcAI-1.0.2-x64.msi
-            dist/MozcAI-1.0.2-x64.msi.sha256
+            dist/MozcAI-1.0.3-test1-x64.msi
+            dist/MozcAI-1.0.3-test1-x64.msi.sha256
           if-no-files-found: error
 
-      - name: Publish Mozc AI v1.0.2
+      - name: Publish Mozc AI v1.0.3-test1
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.2
-          name: Mozc AI v1.0.2
+          tag_name: v1.0.3-test1
+          name: Mozc AI v1.0.3-test1
           body_path: docs/RELEASE_NOTES_V1.0.2.md
           files: |
-            dist/MozcAI-1.0.2-x64.msi
-            dist/MozcAI-1.0.2-x64.msi.sha256
+            dist/MozcAI-1.0.3-test1-x64.msi
+            dist/MozcAI-1.0.3-test1-x64.msi.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -155,7 +238,7 @@ jobs:
         with:
           tag_name: ${{ github.event.inputs.release_tag }}
           files: |
-            dist/MozcAI-1.0.2-x64.msi
-            dist/MozcAI-1.0.2-x64.msi.sha256
+            dist/MozcAI-1.0.3-test1-x64.msi
+            dist/MozcAI-1.0.3-test1-x64.msi.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

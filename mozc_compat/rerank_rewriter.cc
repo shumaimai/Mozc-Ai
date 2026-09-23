@@ -33,8 +33,12 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#include <windows.h>
 #include <process.h>
 #pragma comment(lib, "ws2_32.lib")
 #define MOZC_RERANK_GETPID() _getpid()
@@ -181,6 +185,56 @@ std::string JoinPath(const std::string& dir, const std::string& name) {
     return dir + name;
   }
   return dir + sep + name;
+}
+
+bool FileExists(const std::string& path) {
+  std::ifstream in(path, std::ios::binary);
+  return static_cast<bool>(in);
+}
+
+// Directory of the running executable, or empty when unavailable.
+std::string ExeDir() {
+#ifdef _WIN32
+  char path[MAX_PATH];
+  const DWORD n = GetModuleFileNameA(nullptr, path, MAX_PATH);
+  if (n == 0 || n >= MAX_PATH) {
+    return std::string();
+  }
+  std::string full(path, n);
+#else
+  char path[4096];
+  const ssize_t n = readlink("/proc/self/exe", path, sizeof(path) - 1);
+  if (n <= 0) {
+    return std::string();
+  }
+  const std::string full(path, static_cast<size_t>(n));
+#endif
+  const size_t sep = full.find_last_of("/\\");
+  if (sep == std::string::npos || sep == 0) {
+    return std::string();
+  }
+  return full.substr(0, sep);
+}
+
+// Shipped policy next to the installed daemon: <exe_dir>/ai/model/
+// margin_policy.json when run from the all-in-one MSI layout, or
+// <exe_dir>/model/margin_policy.json for a standalone daemon directory.
+std::string DefaultPolicyPath() {
+  const std::string dir = ExeDir();
+  if (dir.empty()) {
+    return std::string();
+  }
+  const std::string shipped =
+      JoinPath(JoinPath(dir, "ai"), JoinPath("model", "margin_policy.json"));
+  if (FileExists(shipped)) {
+    return shipped;
+  }
+  const std::string local =
+      JoinPath(dir, JoinPath("model", "margin_policy.json"));
+  if (FileExists(local)) {
+    return local;
+  }
+  return std::string();
 }
 
 bool ReadFileToString(const std::string& path, std::string* out) {
@@ -378,6 +432,11 @@ void RerankRewriter::LoadConfigFromEnv() {
   }
   log_path_ = GetEnvOrEmpty("MOZC_RERANK_LOG");
   policy_path_ = GetEnvOrEmpty("MOZC_RERANK_POLICY");
+  if (policy_path_.empty()) {
+    // Shipped all-in-one layout: read the bundled margin_policy.json so the
+    // server-side guard mode stays consistent with the daemon policy.
+    policy_path_ = DefaultPolicyPath();
+  }
   if (!policy_path_.empty()) {
     LoadPolicyFile(policy_path_);
   }
@@ -458,6 +517,10 @@ void RerankRewriter::LoadPolicyFile(const std::string& path) {
   }
   if (cc > 0) {
     context_chars_ = static_cast<int>(cc);
+  }
+  std::string policy_guard_mode;
+  if (ExtractJsonString(json, "guard_mode", &policy_guard_mode)) {
+    rerank::SetPolicyGuardMode(policy_guard_mode);
   }
 }
 

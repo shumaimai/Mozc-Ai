@@ -16,10 +16,37 @@ foreach ($required in @(
     (Join-Path $ModelDir "cross_encoder_fp32.onnx"),
     (Join-Path $ModelDir "margin_policy.json"),
     (Join-Path $ModelDir "tokenizer\tokenizer.json"),
-    (Join-Path $ModelDir "tokenizer\tokenizer.model")
+    (Join-Path $ModelDir "tokenizer\tokenizer.model"),
+    (Join-Path $ModelDir "SHA256SUMS")
 )) {
     if (-not (Test-Path -LiteralPath $required)) { throw "Missing runtime asset: $required" }
 }
+
+# Reject Git LFS pointer stubs — a failed smudge must never ship a 130-byte model.
+$onnxPath = Join-Path $ModelDir "cross_encoder_fp32.onnx"
+$onnxLen = (Get-Item -LiteralPath $onnxPath).Length
+if ($onnxLen -lt 100MB) { throw "ONNX model is unexpectedly small: $onnxLen bytes" }
+$onnxHead = [byte[]]::new(32)
+$stream = [IO.File]::OpenRead($onnxPath)
+try { [void]$stream.Read($onnxHead, 0, $onnxHead.Length) } finally { $stream.Dispose() }
+if ([Text.Encoding]::ASCII.GetString($onnxHead).StartsWith("version https://git-lfs")) {
+    throw "ONNX model is a Git LFS pointer stub (git lfs smudge failed)"
+}
+
+# Pin every model file to runtime/model/SHA256SUMS.
+foreach ($line in Get-Content -LiteralPath (Join-Path $ModelDir "SHA256SUMS")) {
+    if (-not $line.Trim()) { continue }
+    $parts = $line -split '\s+', 2
+    $expected = $parts[0].ToLowerInvariant()
+    $rel = $parts[1].Trim().TrimStart('*')
+    $file = Join-Path $ModelDir ($rel -replace '/', '\')
+    if (-not (Test-Path -LiteralPath $file)) { throw "SHA256SUMS entry missing: $rel" }
+    $actual = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($actual -ne $expected) {
+        throw "Model hash mismatch: $rel (expected $expected, got $actual)"
+    }
+}
+Write-Host "MODEL_SHA256_OK $ModelDir"
 
 if (-not (Test-Path -LiteralPath $VenvPython)) {
     & $Python -m venv $Venv

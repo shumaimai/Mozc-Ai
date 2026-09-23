@@ -10,12 +10,21 @@
 #include "testing/gunit.h"
 
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <string>
 #include <sys/stat.h>
 
 namespace mozc {
 namespace {
+
+void SetEnvValue(const char* name, const char* value) {
+#ifdef _WIN32
+  _putenv_s(name, value);
+#else
+  setenv(name, value, 1);
+#endif
+}
 
 ConversionRequest MakeConversionRequest() {
   ConversionRequest::Options options = {
@@ -208,6 +217,8 @@ TEST(RerankRewriterTest, GuardSkipsShortReadingWithoutHook) {
 }
 
 TEST(RerankRewriterTest, GuardSkipReasons) {
+  // Legacy strict allowlist, selected by an explicit env value.
+  SetEnvValue("MOZC_RERANK_GUARD_MODE", "strict");
   EXPECT_EQ(rerank::RerankSkipReason("い", "文化"), "reading_too_short");
   EXPECT_EQ(rerank::RerankSkipReason("ねん", "5"), "reading_too_short");
   EXPECT_EQ(rerank::RerankSkipReason("きしゃ", ""), "context_empty_or_symbol");
@@ -218,6 +229,7 @@ TEST(RerankRewriterTest, GuardSkipReasons) {
   EXPECT_EQ(rerank::RerankSkipReason("きょうかい", "全国商業高等学校"),
             "reading_not_eligible");
   EXPECT_EQ(rerank::RerankSkipReason("きしゃ", "駅に"), "");
+  SetEnvValue("MOZC_RERANK_GUARD_MODE", "");
   EXPECT_TRUE(rerank::IsJunkSurface("ヨセン"));
   EXPECT_TRUE(rerank::IsJunkSurface("實際に"));
   EXPECT_FALSE(rerank::IsJunkSurface("予選"));
@@ -229,21 +241,47 @@ TEST(RerankRewriterTest, RuntimeContextUsesMozcTop1ForEarlierSegments) {
   EXPECT_EQ(rerank::BuildRuntimeContext("新聞の", {}), "新聞の");
 }
 
+TEST(RerankRewriterTest, GuardModePrecedence) {
+  // Built-in default (no env, no policy override): safety — the strict
+  // reading allowlist must NOT fire.
+  SetEnvValue("MOZC_RERANK_GUARD_MODE", "");
+  rerank::SetPolicyGuardMode("");
+  EXPECT_EQ(rerank::RerankSkipReason("いいんちょう", "文化"), "");
+  EXPECT_EQ(rerank::RerankSkipReason("い", "文化"), "reading_too_short");
+
+  // Policy strict (margin_policy.json "guard_mode") with empty env fires.
+  rerank::SetPolicyGuardMode("strict");
+  EXPECT_EQ(rerank::RerankSkipReason("いいんちょう", "文化"),
+            "reading_not_eligible");
+
+  // Explicit env value wins over the policy override.
+  SetEnvValue("MOZC_RERANK_GUARD_MODE", "safety");
+  EXPECT_EQ(rerank::RerankSkipReason("いいんちょう", "文化"), "");
+  // Any non-safety env value means strict, matching usage_guard.py.
+  SetEnvValue("MOZC_RERANK_GUARD_MODE", "banana");
+  EXPECT_EQ(rerank::RerankSkipReason("いいんちょう", "文化"),
+            "reading_not_eligible");
+
+  // Deleting the env value falls back to the policy layer.
+  SetEnvValue("MOZC_RERANK_GUARD_MODE", "");
+  EXPECT_EQ(rerank::RerankSkipReason("いいんちょう", "文化"),
+            "reading_not_eligible");
+  rerank::SetPolicyGuardMode("safety");
+  EXPECT_EQ(rerank::RerankSkipReason("いいんちょう", "文化"), "");
+
+  // Removing the policy override restores the built-in safety default.
+  rerank::SetPolicyGuardMode("");
+  EXPECT_EQ(rerank::RerankSkipReason("いいんちょう", "文化"), "");
+  SetEnvValue("MOZC_RERANK_GUARD_MODE", "");
+}
+
 TEST(RerankRewriterTest, SafetyGuardModeRelaxesOnlyReadingAllowlist) {
-#ifdef _WIN32
-  _putenv_s("MOZC_RERANK_GUARD_MODE", "safety");
-#else
-  setenv("MOZC_RERANK_GUARD_MODE", "safety", 1);
-#endif
+  SetEnvValue("MOZC_RERANK_GUARD_MODE", "safety");
   EXPECT_EQ(rerank::RerankSkipReason("いいんちょう", "文化"), "");
   EXPECT_EQ(rerank::RerankSkipReason("い", "文化"), "reading_too_short");
   EXPECT_EQ(rerank::RerankSkipReason("いいんちょう", "1"),
             "context_empty_or_symbol");
-#ifdef _WIN32
-  _putenv_s("MOZC_RERANK_GUARD_MODE", "");
-#else
-  unsetenv("MOZC_RERANK_GUARD_MODE");
-#endif
+  SetEnvValue("MOZC_RERANK_GUARD_MODE", "");
 }
 
 #ifndef _WIN32
