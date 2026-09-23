@@ -3,6 +3,7 @@
 
 #include "rewriter/rerank_rewriter.h"
 #include "rewriter/rerank_guard.h"
+#include "rewriter/context_clip.h"
 
 #include "converter/candidate.h"
 #include "converter/segments.h"
