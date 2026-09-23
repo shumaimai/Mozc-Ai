@@ -63,8 +63,8 @@ Get-ItemProperty HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\* |
 ### インストール後の確認
 
 ```powershell
-# 自動検証レポート
-powershell -ExecutionPolicy Bypass -File "C:\Program Files\Mozc\ai\..\post_install_verify.ps1" -Quiet:$false
+# 自動検証レポート（リポジトリのスクリプト。MSIには同梱されません）
+powershell -ExecutionPolicy Bypass -File <repo>\installer\windows\post_install_verify.ps1
 # → %LOCALAPPDATA%\Google\Mozc\install_verify.txt に結果が書かれます
 
 # ペイロード照合（凍結モデルとの一致確認）
