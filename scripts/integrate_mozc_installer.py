@@ -277,18 +277,10 @@ def patch_installer_wxs(mozc_src: Path, dry_run: bool) -> None:
             1,
         )
 
-    if '<ComponentRef Id="LegacyPersonalRerankCleanup" />' not in text:
-        marker = '<ComponentRef Id="PrelaunchProcessesV1" />'
-        if marker not in text:
-            raise RuntimeError("Could not find startup component reference")
-        text = text.replace(
-            marker,
-            marker + '\n      <ComponentRef Id="LegacyPersonalRerankCleanup" />',
-            1,
-        )
-
     # Do not reuse the upstream component/value identity: the legacy product
-    # removes its identically named Run value during migration.
+    # removes its identically named Run value during migration.  Rename the
+    # upstream prelaunch component BEFORE anchoring the cleanup reference on
+    # the V1 identity - a fresh clone has no V1 marker yet.
     text = text.replace(
         '<ComponentRef Id="PrelaunchProcesses" />',
         '<ComponentRef Id="PrelaunchProcessesV1" />',
@@ -299,6 +291,16 @@ def patch_installer_wxs(mozc_src: Path, dry_run: bool) -> None:
         '<Component Id="PrelaunchProcessesV1" Directory="TARGETDIR">',
         1,
     )
+
+    if '<ComponentRef Id="LegacyPersonalRerankCleanup" />' not in text:
+        marker = '<ComponentRef Id="PrelaunchProcessesV1" />'
+        if marker not in text:
+            raise RuntimeError("Could not find startup component reference")
+        text = text.replace(
+            marker,
+            marker + '\n      <ComponentRef Id="LegacyPersonalRerankCleanup" />',
+            1,
+        )
 
     run_marker = (
         '<RegistryValue Id="RunBroker" Root="HKLM" '
