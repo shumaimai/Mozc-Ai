@@ -37,6 +37,7 @@
 #include "rewriter/rewriter_interface.h"
 
 namespace mozc {
+class Segment;
 
 class RerankRewriter : public RewriterInterface {
  public:
@@ -70,6 +71,18 @@ class RerankRewriter : public RewriterInterface {
     std::string rerank_top1;
     std::string final_top1;
     bool overwritten = false;
+    // Daemon-reported timings in milliseconds (0 when unavailable):
+    // daemon_ms = full daemon handling time, infer_ms = pure model scoring.
+    float daemon_ms = 0.0f;
+    float infer_ms = 0.0f;
+    // Daemon-reported sha256 of the actually loaded ONNX model
+    // (empty when the daemon did not report it).
+    std::string model_sha256;
+    // Daemon-reported guard skip reason (fixed token, empty normally).
+    std::string reason;
+    // Echo of the anonymous request id sent with the daemon call
+    // (0 when the daemon did not echo it).
+    std::uint64_t echo_req_id = 0;
   };
 
   struct PendingLog {
@@ -104,18 +117,19 @@ class RerankRewriter : public RewriterInterface {
   int EffectiveCandCap() const;
   int EffectiveContextChars() const;
   bool DegradeDisabled() const;
-  bool CallHook(const std::string& reading,
-                const std::vector<std::string>& nbest,
-                const std::string& context_prev,
-                HookResult* out) const;
-  bool CallDaemon(const std::string& reading,
-                  const std::vector<std::string>& nbest,
-                  const std::string& context_prev,
-                  HookResult* out) const;
   bool CallHookWithTimeout(const std::string& reading,
                            const std::vector<std::string>& nbest,
                            const std::string& context_prev,
-                           HookResult* out) const;
+                           std::uint64_t req_id, HookResult* out,
+                           bool* timed_out) const;
+  bool CallDaemon(const std::string& reading,
+                  const std::vector<std::string>& nbest,
+                  const std::string& context_prev,
+                  std::uint64_t req_id, HookResult* out) const;
+  bool CallHook(const std::string& reading,
+                const std::vector<std::string>& nbest,
+                const std::string& context_prev,
+                std::uint64_t req_id, HookResult* out) const;
   static bool ParseDaemonAddr(const std::string& addr, std::string* host,
                               int* port);
   static bool ReorderSegment(Segment* segment,
@@ -124,12 +138,17 @@ class RerankRewriter : public RewriterInterface {
   static bool WriteRequestJson(const std::string& path,
                                const std::string& reading,
                                const std::vector<std::string>& nbest,
-                               const std::string& context_prev);
+                               const std::string& context_prev,
+                               std::uint64_t req_id);
   static bool ParseHookResponse(const std::string& json, HookResult* out);
   static bool ExtractJsonString(const std::string& json, const char* key,
                                 std::string* value);
   static bool ExtractJsonBool(const std::string& json, const char* key,
                               bool* value);
+  static bool ExtractJsonDouble(const std::string& json, const char* key,
+                                double* value);
+  static bool ExtractJsonUint64(const std::string& json, const char* key,
+                                std::uint64_t* value);
   static bool ExtractJsonStringArray(const std::string& json, const char* key,
                                      std::vector<std::string>* values);
   void AppendConversionLog(const PendingLog& pending,

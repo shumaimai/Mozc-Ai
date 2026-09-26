@@ -1,0 +1,103 @@
+{
+  "description": "Fixed synthetic evaluation set for the contextual reranker. All inputs are invented strings; nothing here is user data. Each case scores the listed candidates against the context and compares Mozc top1 / neural top1 / margin / final top1.",
+  "tau": 2.5,
+  "max_chars": 50,
+  "cases": [
+    {
+      "id": "kisya_station",
+      "context_prev": "駅に",
+      "reading": "きしゃ",
+      "candidates": ["記者", "汽車"],
+      "expect_neural_top1": "汽車",
+      "note": "travel context favors the train"
+    },
+    {
+      "id": "kisya_interview",
+      "context_prev": "新聞社の",
+      "reading": "きしゃ",
+      "candidates": ["汽車", "記者"],
+      "expect_neural_top1": "記者",
+      "note": "press context favors the reporter"
+    },
+    {
+      "id": "kosha_campus",
+      "context_prev": "大学の",
+      "reading": "こうしゃ",
+      "candidates": ["講社", "校舎"],
+      "expect_neural_top1": "校舎",
+      "note": "campus context favors the school building"
+    },
+    {
+      "id": "kaisya_meeting",
+      "context_prev": "明日の",
+      "reading": "かいしゃ",
+      "candidates": ["会社", "会議", "帰社"],
+      "expect_neural_top1": "会社",
+      "note": "business context favors the company"
+    },
+    {
+      "id": "syasou_train",
+      "context_prev": "電車の",
+      "reading": "しゃそう",
+      "candidates": ["車窓", "しゃそう"],
+      "expect_neural_top1": "車窓",
+      "note": "train context favors the window view"
+    },
+    {
+      "id": "kikan_hospital",
+      "context_prev": "病院で",
+      "reading": "きかん",
+      "candidates": ["器官", "期間", "気管"],
+      "expect_neural_top1": "器官",
+      "note": "medical context favors organs"
+    },
+    {
+      "id": "kikan_duration",
+      "context_prev": "応募の",
+      "reading": "きかん",
+      "candidates": ["器官", "期間"],
+      "expect_neural_top1": "期間",
+      "note": "deadline context favors the period"
+    },
+    {
+      "id": "seiho_payment",
+      "context_prev": "請求書を",
+      "reading": "せいほう",
+      "candidates": ["星座法", "正法", "製法"],
+      "expect_neural_top1": "製法",
+      "note": "invoice context favors manufacturing method reading loosely; model decides"
+    },
+    {
+      "id": "jishin_news",
+      "context_prev": "速報：",
+      "reading": "じしん",
+      "candidates": ["自身", "地震", "自信"],
+      "expect_neural_top1": "地震",
+      "note": "breaking news context favors the quake"
+    },
+    {
+      "id": "jishin_personal",
+      "context_prev": "彼は",
+      "reading": "じしん",
+      "candidates": ["地震", "自信"],
+      "expect_neural_top1": "自信",
+      "note": "personal context favors confidence"
+    },
+    {
+      "id": "sansho_food",
+      "context_prev": "夕食に",
+      "reading": "さんしょう",
+      "candidates": ["山椒", "三丈", "参考"],
+      "expect_neural_top1": "山椒",
+      "note": "dinner context favors the spice"
+    },
+    {
+      "id": "mukiaitai_meeting",
+      "context_prev": "直接",
+      "reading": "むきあいたい",
+      "candidates": ["向き合いたい", "むきあいたい"],
+      "expect_neural_top1": "向き合いたい",
+      "note": "face-to-face context favors the kanji form"
+    }
+  ]
+}

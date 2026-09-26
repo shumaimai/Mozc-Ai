@@ -3,6 +3,7 @@
 
 #include "rewriter/rerank_rewriter.h"
 #include "rewriter/context_clip.h"
+#include "rewriter/rerank_diag.h"
 #include "rewriter/rerank_guard.h"
 #include "rewriter/rerank_margin.h"
 
@@ -135,32 +136,11 @@ const char* CandidateProtectionName(const converter::Candidate& candidate) {
   return "NORMAL";
 }
 
-// Optional privacy-safe runtime diagnostics.  This deliberately records only
-// byte/count metadata and fixed stage names: never surrounding text, readings,
-// candidates, or any other user-provided string.
-void AppendPrivacySafeDiag(const char* stage, size_t request_context_bytes,
-                           size_t history_bytes, size_t clean_context_bytes,
-                           size_t reading_bytes, size_t candidate_count,
-                           size_t history_segment_count,
-                           size_t conversion_segment_count) {
-  const std::string path = GetEnvOrEmpty("MOZC_RERANK_DIAG_LOG");
-  if (path.empty()) {
-    return;
-  }
-  static std::mutex diag_mutex;
-  std::lock_guard<std::mutex> lock(diag_mutex);
-  std::ofstream out(path, std::ios::app | std::ios::binary);
-  if (!out) {
-    return;
-  }
-  out << "{\"stage\":\"" << stage << "\",\"request_context_bytes\":"
-      << request_context_bytes << ",\"history_bytes\":" << history_bytes
-      << ",\"clean_context_bytes\":" << clean_context_bytes
-      << ",\"reading_bytes\":" << reading_bytes
-      << ",\"candidate_count\":" << candidate_count
-      << ",\"history_segment_count\":" << history_segment_count
-      << ",\"conversion_segment_count\":" << conversion_segment_count
-      << "}\n";
+// Steady-clock millisecond helper for anonymous diagnostics timings.
+double SteadyNowMs() {
+  return std::chrono::duration<double, std::milli>(
+             std::chrono::steady_clock::now().time_since_epoch())
+      .count();
 }
 
 std::string TempDir() {
@@ -606,6 +586,9 @@ bool RerankRewriter::Rewrite(const ConversionRequest& request,
     std::lock_guard<std::mutex> lock(pending_mutex_);
     conversion_id = absl::StrCat("rerank-", ++conversion_counter_);
   }
+  const double start_ms = SteadyNowMs();
+  const size_t request_context_bytes =
+      request.context().preceding_text().size();
   Segment* segment = segments->mutable_conversion_segment(target);
   if (segment == nullptr || segment->candidates_size() == 0) {
     return false;
@@ -668,10 +651,28 @@ bool RerankRewriter::Rewrite(const ConversionRequest& request,
 
   const std::string skip = rerank::RerankSkipReason(reading, context_prev);
   if (!skip.empty()) {
-    AppendPrivacySafeDiag(
-        "guard_skip", request.context().preceding_text().size(), history.size(),
-        context_prev.size(), reading.size(), nbest.size(),
-        segments->history_segments_size(), segments->conversion_segments_size());
+    const std::uint64_t req_id = rerank::NextDiagReqId();
+    const double cpp_ms = SteadyNowMs() - start_ms;
+    rerank::DiagEvent event;
+    event.stage = "guard_skip";
+    event.req_id = req_id;
+    event.request_context_bytes =
+        static_cast<std::uint32_t>(request_context_bytes);
+    event.history_bytes = static_cast<std::uint32_t>(history.size());
+    event.clean_context_bytes =
+        static_cast<std::uint32_t>(context_prev.size());
+    event.reading_bytes = static_cast<std::uint32_t>(reading.size());
+    event.candidate_count = static_cast<std::uint32_t>(nbest.size());
+    event.history_segment_count = static_cast<std::uint32_t>(
+        segments->history_segments_size());
+    event.conversion_segment_count = static_cast<std::uint32_t>(
+        segments->conversion_segments_size());
+    event.daemon_result = "skip";
+    event.reason = skip.c_str();
+    event.overwrite = false;
+    event.cpp_ms = cpp_ms;
+    event.infer_ms = 0.0;
+    rerank::AppendDiagEvent(event);
     std::lock_guard<std::mutex> lock(pending_mutex_);
     PendingLog &pending = pending_logs_[std::this_thread::get_id()];
     pending.conversion_id = conversion_id;
@@ -687,14 +688,37 @@ bool RerankRewriter::Rewrite(const ConversionRequest& request,
     return false;
   }
 
-  AppendPrivacySafeDiag(
-      "daemon_call", request.context().preceding_text().size(), history.size(),
-      context_prev.size(), reading.size(), nbest.size(),
-      segments->history_segments_size(), segments->conversion_segments_size());
-
+  const std::uint64_t req_id = rerank::NextDiagReqId();
   HookResult result;
-  if (!CallHookWithTimeout(reading, nbest, context_prev, &result)) {
-    LOG(WARNING) << "RerankRewriter hook failed/timeout for key=" << reading;
+  bool timed_out = false;
+  const bool daemon_ok =
+      CallHookWithTimeout(reading, nbest, context_prev, req_id, &result,
+                          &timed_out);
+  if (!daemon_ok) {
+    const double fail_ms = SteadyNowMs() - start_ms;
+    rerank::DiagEvent event;
+    event.stage = "rewrite";
+    event.req_id = req_id;
+    event.request_context_bytes =
+        static_cast<std::uint32_t>(request_context_bytes);
+    event.history_bytes = static_cast<std::uint32_t>(history.size());
+    event.clean_context_bytes =
+        static_cast<std::uint32_t>(context_prev.size());
+    event.reading_bytes = static_cast<std::uint32_t>(reading.size());
+    event.candidate_count = static_cast<std::uint32_t>(nbest.size());
+    event.history_segment_count = static_cast<std::uint32_t>(
+        segments->history_segments_size());
+    event.conversion_segment_count = static_cast<std::uint32_t>(
+        segments->conversion_segments_size());
+    event.daemon_result = timed_out ? "timeout" : "fail";
+    event.reason = "";
+    event.overwrite = false;
+    event.cpp_ms = fail_ms;
+    event.infer_ms = 0.0;
+    rerank::AppendDiagEvent(event);
+    LOG(WARNING) << "RerankRewriter hook "
+                 << (timed_out ? "timeout" : "failure")
+                 << " req_id=" << req_id;
     return false;
   }
   if (result.ranked_surfaces.empty()) {
@@ -712,6 +736,36 @@ bool RerankRewriter::Rewrite(const ConversionRequest& request,
   }
 
   const bool changed = ReorderSegment(segment, result.ranked_surfaces);
+
+  // Anonymous diagnostics for the successful daemon round trip: fixed tokens
+  // and byte/count metadata only.  overwrite reflects the final decision
+  // after the junk-surface and Mozc-top1 protection overrides above.
+  {
+    if (!result.model_sha256.empty()) {
+      rerank::SetReportedModelSha256(result.model_sha256);
+    }
+    rerank::DiagEvent event;
+    event.stage = "rewrite";
+    event.req_id = req_id;
+    event.request_context_bytes =
+        static_cast<std::uint32_t>(request_context_bytes);
+    event.history_bytes = static_cast<std::uint32_t>(history.size());
+    event.clean_context_bytes =
+        static_cast<std::uint32_t>(context_prev.size());
+    event.reading_bytes = static_cast<std::uint32_t>(reading.size());
+    event.candidate_count = static_cast<std::uint32_t>(nbest.size());
+    event.history_segment_count = static_cast<std::uint32_t>(
+        segments->history_segments_size());
+    event.conversion_segment_count = static_cast<std::uint32_t>(
+        segments->conversion_segments_size());
+    event.daemon_result = "ok";
+    event.reason = result.reason.c_str();
+    event.overwrite = result.overwritten;
+    event.cpp_ms = SteadyNowMs() - start_ms;
+    event.infer_ms = result.infer_ms;
+    event.round_trip = (result.echo_req_id == req_id);
+    rerank::AppendDiagEvent(event);
+  }
 
   {
     std::lock_guard<std::mutex> lock(pending_mutex_);
@@ -766,20 +820,27 @@ void RerankRewriter::Clear() {
   pending_logs_.clear();
 }
 
-bool RerankRewriter::CallHookWithTimeout(const std::string& reading,
-                                         const std::vector<std::string>& nbest,
-                                         const std::string& context_prev,
-                                         HookResult* out) const {
-  auto fut = std::async(std::launch::async, [this, reading, nbest, context_prev,
-                                             out]() {
-    if (!hook_cmd_.empty()) {
-      return CallHook(reading, nbest, context_prev, out);
-    }
-    return CallDaemon(reading, nbest, context_prev, out);
-  });
+bool RerankRewriter::CallHookWithTimeout(
+    const std::string& reading, const std::vector<std::string>& nbest,
+    const std::string& context_prev, std::uint64_t req_id, HookResult* out,
+    bool* timed_out) const {
+  if (timed_out != nullptr) {
+    *timed_out = false;
+  }
+  auto fut = std::async(
+      std::launch::async,
+      [this, reading, nbest, context_prev, req_id, out]() {
+        if (!hook_cmd_.empty()) {
+          return CallHook(reading, nbest, context_prev, req_id, out);
+        }
+        return CallDaemon(reading, nbest, context_prev, req_id, out);
+      });
   if (fut.wait_for(std::chrono::milliseconds(timeout_ms_)) !=
       std::future_status::ready) {
     NoteTimeout();
+    if (timed_out != nullptr) {
+      *timed_out = true;
+    }
     return false;
   }
   const bool ok = fut.get();
@@ -812,7 +873,7 @@ bool RerankRewriter::ParseDaemonAddr(const std::string& addr, std::string* host,
 bool RerankRewriter::CallDaemon(const std::string& reading,
                                 const std::vector<std::string>& nbest,
                                 const std::string& context_prev,
-                                HookResult* out) const {
+                                std::uint64_t req_id, HookResult* out) const {
   if (out == nullptr) {
     return false;
   }
@@ -822,7 +883,8 @@ bool RerankRewriter::CallDaemon(const std::string& reading,
     return false;
   }
   std::ostringstream ss;
-  ss << "{\"reading\":\"" << EscapeJson(reading) << "\",\"context_prev\":\""
+  ss << "{\"req_id\":" << req_id << ",\"reading\":\""
+     << EscapeJson(reading) << "\",\"context_prev\":\""
      << EscapeJson(context_prev) << "\",\"nbest\":[";
   for (size_t i = 0; i < nbest.size(); ++i) {
     if (i) {
@@ -841,7 +903,7 @@ bool RerankRewriter::CallDaemon(const std::string& reading,
 bool RerankRewriter::CallHook(const std::string& reading,
                               const std::vector<std::string>& nbest,
                               const std::string& context_prev,
-                              HookResult* out) const {
+                              std::uint64_t req_id, HookResult* out) const {
   if (out == nullptr || hook_cmd_.empty()) {
     return false;
   }
@@ -853,7 +915,7 @@ bool RerankRewriter::CallHook(const std::string& reading,
   const std::string resp_path = JoinPath(TempDir(), base + "_resp.json");
   DeleteFileQuiet(resp_path);
 
-  if (!WriteRequestJson(req_path, reading, nbest, context_prev)) {
+  if (!WriteRequestJson(req_path, reading, nbest, context_prev, req_id)) {
     DeleteFileQuiet(req_path);
     return false;
   }
@@ -947,9 +1009,11 @@ std::string RerankRewriter::EscapeJson(const std::string& s) {
 bool RerankRewriter::WriteRequestJson(const std::string& path,
                                       const std::string& reading,
                                       const std::vector<std::string>& nbest,
-                                      const std::string& context_prev) {
+                                      const std::string& context_prev,
+                                      std::uint64_t req_id) {
   std::ostringstream ss;
-  ss << "{\"reading\":\"" << EscapeJson(reading) << "\",\"context_prev\":\""
+  ss << "{\"req_id\":" << req_id << ",\"reading\":\""
+     << EscapeJson(reading) << "\",\"context_prev\":\""
      << EscapeJson(context_prev) << "\",\"nbest\":[";
   for (size_t i = 0; i < nbest.size(); ++i) {
     if (i) {
@@ -1052,6 +1116,46 @@ bool RerankRewriter::ExtractJsonBool(const std::string& json, const char* key,
   return false;
 }
 
+bool RerankRewriter::ExtractJsonDouble(const std::string& json,
+                                       const char* key, double* value) {
+  const std::string needle = absl::StrCat("\"", key, "\"");
+  size_t pos = json.find(needle);
+  if (pos == std::string::npos) {
+    return false;
+  }
+  pos = json.find(':', pos + needle.size());
+  if (pos == std::string::npos) {
+    return false;
+  }
+  ++pos;
+  while (pos < json.size() &&
+         (json[pos] == ' ' || json[pos] == '\n' || json[pos] == '\r' ||
+          json[pos] == '\t')) {
+    ++pos;
+  }
+  const size_t end = json.find_first_of(",}] \n\r\t", pos);
+  const std::string token =
+      json.substr(pos, end == std::string::npos ? std::string::npos
+                                                : end - pos);
+  double parsed = 0.0;
+  if (!absl::SimpleAtod(token, &parsed)) {
+    return false;
+  }
+  *value = parsed;
+  return true;
+}
+
+bool RerankRewriter::ExtractJsonUint64(const std::string& json,
+                                       const char* key,
+                                       std::uint64_t* value) {
+  double parsed = 0.0;
+  if (!ExtractJsonDouble(json, key, &parsed) || parsed < 0.0) {
+    return false;
+  }
+  *value = static_cast<std::uint64_t>(parsed);
+  return true;
+}
+
 bool RerankRewriter::ExtractJsonStringArray(
     const std::string& json, const char* key,
     std::vector<std::string>* values) {
@@ -1109,6 +1213,19 @@ bool RerankRewriter::ParseHookResponse(const std::string& json,
   ExtractJsonString(json, "rerank_top1", &out->rerank_top1);
   ExtractJsonString(json, "final_top1", &out->final_top1);
   ExtractJsonBool(json, "overwritten", &out->overwritten);
+  ExtractJsonString(json, "reason", &out->reason);
+  double daemon_ms = 0.0;
+  if (ExtractJsonDouble(json, "daemon_ms", &daemon_ms) && daemon_ms >= 0.0) {
+    out->daemon_ms = static_cast<float>(daemon_ms);
+  }
+  double infer_ms = 0.0;
+  if (ExtractJsonDouble(json, "infer_ms", &infer_ms) && infer_ms >= 0.0) {
+    out->infer_ms = static_cast<float>(infer_ms);
+  }
+  std::uint64_t echo_req_id = 0;
+  ExtractJsonUint64(json, "req_id", &echo_req_id);
+  out->echo_req_id = echo_req_id;
+  ExtractJsonString(json, "model_sha256", &out->model_sha256);
   if (out->final_top1.empty() && !out->ranked_surfaces.empty()) {
     out->final_top1 = out->ranked_surfaces.front();
   }

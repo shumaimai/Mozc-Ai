@@ -183,14 +183,20 @@ jobs:
             }
 
             # Synthetic conversion (fixed strings only): the bundled model
-            # must actually run for this request.
-            $resp = Invoke-Rerank '{"reading":"きしゃ","context_prev":"駅に","nbest":["記者","汽車"]}'
+            # must actually run for this request. req_id is an anonymous
+            # correlation id (no user content) echoed back for round-trip proof.
+            $resp = Invoke-Rerank '{"req_id":777,"reading":"きしゃ","context_prev":"駅に","nbest":["記者","汽車"]}'
             Write-Host "rerank response: $($resp | ConvertTo-Json -Compress)"
             if ($resp.ok -ne $true) { throw "Daemon rerank failed: ok != true" }
             if ($resp.guard_skip -ne $false) { throw "Model did not run: guard_skip=true (guard or model packaging broken)" }
             if (-not $resp.ranked_surfaces -or @($resp.ranked_surfaces).Count -eq 0) { throw "Daemon returned no ranked_surfaces" }
             if ($null -eq $resp.margin) { throw "Daemon response lacks margin; scoring did not execute" }
-            Write-Host "Daemon smoke OK: ok=true guard_skip=false margin=$($resp.margin)"
+            if ($resp.req_id -ne 777) { throw "Daemon response lacks req_id echo; anonymous round-trip proof broken" }
+            if ($null -eq $resp.infer_ms) { throw "Daemon response lacks infer_ms; timing diagnostics broken" }
+            if (-not $resp.model_sha256 -or $resp.model_sha256 -notmatch '^[0-9a-f]{64}$') { throw "Daemon response lacks valid model_sha256" }
+            $ping = Invoke-Rerank '{"op":"ping"}'
+            if ($ping.model_sha256 -ne $resp.model_sha256) { throw "model_sha256 mismatch between ping and rerank responses" }
+            Write-Host "Daemon smoke OK: ok=true guard_skip=false margin=$($resp.margin) req_id=777 model_sha256=$($resp.model_sha256)"
           } finally {
             Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
           }

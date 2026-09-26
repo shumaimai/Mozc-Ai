@@ -3,6 +3,7 @@
 
 #include "rewriter/rerank_rewriter.h"
 #include "rewriter/rerank_guard.h"
+#include "rewriter/rerank_diag.h"
 #include "rewriter/context_clip.h"
 
 #include "converter/candidate.h"
@@ -11,8 +12,10 @@
 #include "testing/gunit.h"
 
 #include <cstdio>
+#include <cstdint>
 #include <cstdlib>
 #include <fstream>
+#include <iterator>
 #include <string>
 #include <sys/stat.h>
 
@@ -184,6 +187,108 @@ TEST(RerankRewriterTest, DaemonUnreachableKeepsMozcOrder) {
   EXPECT_FALSE(rewriter.Rewrite(req, &segments));
   EXPECT_EQ(segments.conversion_segment(0).candidate(0).value, "記者");
   EXPECT_EQ(segments.conversion_segment(0).candidate(1).value, "汽車");
+}
+
+TEST(RerankRewriterTest, DiagReqIdIncrements) {
+  const std::uint64_t first = rerank::NextDiagReqId();
+  const std::uint64_t second = rerank::NextDiagReqId();
+  EXPECT_GT(first, 0u);
+  EXPECT_EQ(second, first + 1);
+}
+
+TEST(RerankRewriterTest, DiagLogCountersSummaryAndNoUserText) {
+  // Anonymous diagnostics contract: counters, fixed tokens, byte/count
+  // metadata, latencies, and ids only — never user-provided strings.  The
+  // module API has no way to pass text, so this test pins the emitted JSONL.
+  rerank::SetPolicyGuardMode("");
+  SetEnvValue("MOZC_RERANK_GUARD_MODE", "safety");
+  SetEnvValue("MOZC_RERANK_DIAG_MODEL_SHA256",
+              "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+  const std::string diag_path =
+      (std::string(testing::TempDir()) + "mozc_diag_test.jsonl");
+  std::remove(diag_path.c_str());
+  SetEnvValue("MOZC_RERANK_DIAG_LOG", diag_path.c_str());
+
+  // Counters are process-cumulative; assert deltas, not absolute totals.
+  const rerank::DiagCounters before = rerank::DiagCountersSnapshot();
+
+  rerank::DiagEvent skip;
+  skip.stage = "guard_skip";
+  skip.req_id = 1;
+  skip.reading_bytes = 9;
+  skip.candidate_count = 2;
+  skip.daemon_result = "skip";
+  skip.reason = "reading_too_short";
+  skip.cpp_ms = 0.25;
+  rerank::AppendDiagEvent(skip);
+
+  rerank::DiagEvent ok;
+  ok.stage = "rewrite";
+  ok.req_id = 2;
+  ok.reading_bytes = 18;
+  ok.candidate_count = 30;
+  ok.daemon_result = "ok";
+  ok.reason = "";
+  ok.overwrite = true;
+  ok.round_trip = true;
+  ok.cpp_ms = 30.5;
+  ok.infer_ms = 12.5;
+  rerank::AppendDiagEvent(ok);
+
+  // Third event stabilizes percentile math (p50 = middle of three samples).
+  rerank::DiagEvent ok2 = ok;
+  ok2.req_id = 3;
+  rerank::AppendDiagEvent(ok2);
+
+  rerank::FlushDiagSummary();
+  SetEnvValue("MOZC_RERANK_DIAG_LOG", "");
+
+  std::ifstream in(diag_path);
+  ASSERT_TRUE(in);
+  std::string body((std::istreambuf_iterator<char>(in)),
+                   std::istreambuf_iterator<char>());
+  std::remove(diag_path.c_str());
+  SetEnvValue("MOZC_RERANK_GUARD_MODE", "");
+  SetEnvValue("MOZC_RERANK_DIAG_MODEL_SHA256", "");
+
+  // Summary and counters reflect the delta of the three events above.
+  const rerank::DiagCounters after = rerank::DiagCountersSnapshot();
+  EXPECT_EQ(after.rewrite_calls - before.rewrite_calls, 3u);
+  EXPECT_EQ(after.guard_skips - before.guard_skips, 1u);
+  EXPECT_EQ(after.skip_reading_too_short - before.skip_reading_too_short, 1u);
+  EXPECT_EQ(after.daemon_ok - before.daemon_ok, 2u);
+  EXPECT_EQ(after.daemon_fail - before.daemon_fail, 0u);
+  EXPECT_EQ(after.daemon_timeout - before.daemon_timeout, 0u);
+  EXPECT_EQ(after.overwrites - before.overwrites, 2u);
+  EXPECT_EQ(after.round_trips - before.round_trips, 2u);
+
+  // Summary line: structural checks (cumulative totals depend on prior tests).
+  EXPECT_NE(body.find("\"stage\":\"summary\""), std::string::npos);
+  EXPECT_NE(body.find("\"cpp_ms_p50\":"), std::string::npos);
+  EXPECT_NE(body.find("\"cpp_ms_p95\":"), std::string::npos);
+  EXPECT_NE(body.find("\"cpp_ms_p99\":"), std::string::npos);
+  EXPECT_NE(body.find("\"infer_ms_p50\":"), std::string::npos);
+  EXPECT_NE(body.find(
+                "\"model_sha256\":\"0123456789abcdef0123456789abcdef"
+                "0123456789abcdef0123456789abcdef\""),
+            std::string::npos);
+  EXPECT_NE(body.find("\"guard_mode\":\"safety\""), std::string::npos);
+
+  // Event lines carry session/req correlation and fixed tokens only.
+  EXPECT_NE(body.find("\"stage\":\"guard_skip\""), std::string::npos);
+  EXPECT_NE(body.find("\"daemon_result\":\"skip\""), std::string::npos);
+  EXPECT_NE(body.find("\"reason\":\"reading_too_short\""), std::string::npos);
+  EXPECT_NE(body.find("\"stage\":\"rewrite\""), std::string::npos);
+  EXPECT_NE(body.find("\"round_trip\":true"), std::string::npos);
+  EXPECT_NE(body.find("\"req_id\":1"), std::string::npos);
+  EXPECT_NE(body.find("\"req_id\":2"), std::string::npos);
+  EXPECT_NE(body.find("\"req_id\":3"), std::string::npos);
+  EXPECT_NE(body.find("\"session_id\":\""), std::string::npos);
+
+  // Privacy regression guard: no user text can appear because the API cannot
+  // carry it; assert the synthetic strings a buggy caller might leak.
+  EXPECT_EQ(body.find("きしゃ"), std::string::npos);
+  EXPECT_EQ(body.find("駅に"), std::string::npos);
 }
 
 TEST(RerankRewriterTest, GuardSkipsShortReadingWithoutHook) {

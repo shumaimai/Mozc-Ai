@@ -84,15 +84,20 @@ function Invoke-Request([string]$json, [int]$timeoutMs) {
 Write-Host "== 3. Synthetic requests (fixed strings only) =="
 $ping = Invoke-Request '{"op":"ping"}' 10000
 if ($ping.line -notmatch '"op"\s*:\s*"pong"') { Fail "ping failed: $($ping.line)" }
-Write-Host "ping OK ($([math]::Round($ping.ms,1)) ms)"
+$pingSha = ($ping.line | ConvertFrom-Json).model_sha256
+if (-not $pingSha -or $pingSha -notmatch '^[0-9a-f]{64}$') { Fail "ping lacks valid model_sha256: $pingSha" }
+Write-Host "ping OK ($([math]::Round($ping.ms,1)) ms) model_sha256=$pingSha"
 
-# Scored synthetic conversion: model must actually run.
-$r1 = Invoke-Request '{"reading":"きしゃ","context_prev":"駅に","nbest":["記者","汽車"]}' ($TimeoutMs * 3)
+# Scored synthetic conversion: model must actually run. req_id is an
+# anonymous correlation id (no user content) echoed back for round-trip proof.
+$r1 = Invoke-Request '{"req_id":777,"reading":"きしゃ","context_prev":"駅に","nbest":["記者","汽車"]}' ($TimeoutMs * 3)
 $j1 = $r1.line | ConvertFrom-Json
-Write-Host "scored:  ok=$($j1.ok) guard_skip=$($j1.guard_skip) overwritten=$($j1.overwritten) final_top1=$($j1.final_top1) margin=$($j1.margin) ($([math]::Round($r1.ms,1)) ms)"
+Write-Host "scored:  ok=$($j1.ok) guard_skip=$($j1.guard_skip) overwritten=$($j1.overwritten) final_top1=$($j1.final_top1) margin=$($j1.margin) infer_ms=$($j1.infer_ms) req_id=$($j1.req_id) ($([math]::Round($r1.ms,1)) ms)"
 if ($j1.ok -ne $true) { Fail "ok != true" }
 if ($j1.guard_skip -ne $false) { Fail "guard_skip=true on scored request - the model did NOT run (packaging broken)" }
 if ($null -eq $j1.margin) { Fail "no margin in response - scoring did not execute" }
+if ($j1.req_id -ne 777) { Fail "req_id echo missing - anonymous round-trip proof broken" }
+if ($null -eq $j1.infer_ms) { Fail "infer_ms missing - daemon timing diagnostics broken" }
 
 # Guard skip: short reading must never reach the model.
 $r2 = Invoke-Request '{"reading":"い","context_prev":"文化","nbest":["位","李"]}' 10000

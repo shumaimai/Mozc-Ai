@@ -9,6 +9,7 @@ request text.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -165,12 +166,34 @@ class OrtScorer:
         return [float(value) for value in np.asarray(result).reshape(-1).tolist()]
 
 
-def rerank(req: dict[str, Any], scorer: OrtScorer, tau: float, cand_cap: int) -> dict[str, Any]:
+def file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def rerank(
+    req: dict[str, Any],
+    scorer: OrtScorer,
+    tau: float,
+    cand_cap: int,
+    model_sha256: str = "",
+) -> dict[str, Any]:
+    # Echo the caller's anonymous request id (no user content) so the client
+    # can prove the full C++ -> daemon -> C++ round trip.
+    req_id = req.get("req_id")
     reading = normalize_reading(req.get("reading") or "")
     context = clean_context(req.get("context_prev") or req.get("context") or "")
     candidates = [str(value) for value in (req.get("nbest") or req.get("candidates") or []) if value]
     if not reading or not candidates:
-        return {"ok": False, "ranked_surfaces": []}
+        return {
+            "ok": False,
+            "ranked_surfaces": [],
+            "req_id": req_id,
+            "model_sha256": model_sha256,
+        }
     candidates = candidates[:cand_cap]
     mozc_top = candidates[0]
     reason = skip_reason(reading, context)
@@ -183,10 +206,15 @@ def rerank(req: dict[str, Any], scorer: OrtScorer, tau: float, cand_cap: int) ->
             "overwritten": False,
             "guard_skip": True,
             "reason": reason,
+            "req_id": req_id,
+            "infer_ms": 0.0,
+            "model_sha256": model_sha256,
         }
+    infer_started = time.perf_counter()
     scores = scorer.score(
         [build_pair_text(reading, context, candidate) for candidate in candidates]
     )
+    infer_ms = (time.perf_counter() - infer_started) * 1000.0
     best_index = max(range(len(candidates)), key=lambda index: scores[index])
     rerank_top = candidates[best_index]
     margin = scores[best_index] - scores[0]
@@ -204,6 +232,9 @@ def rerank(req: dict[str, Any], scorer: OrtScorer, tau: float, cand_cap: int) ->
         "overwritten": overwrite,
         "guard_skip": False,
         "margin": margin,
+        "req_id": req_id,
+        "infer_ms": round(infer_ms, 3),
+        "model_sha256": model_sha256,
     }
 
 
@@ -215,14 +246,27 @@ class Handler(socketserver.StreamRequestHandler):
             try:
                 req = json.loads(raw.decode("utf-8"))
                 if str(req.get("op") or "").lower() == "ping":
-                    response: dict[str, Any] = {"ok": True, "op": "pong"}
+                    response: dict[str, Any] = {
+                        "ok": True,
+                        "op": "pong",
+                        "model_sha256": server.model_sha256,
+                    }
                 else:
-                    response = rerank(req, server.scorer, server.tau, server.cand_cap)
+                    response = rerank(
+                        req, server.scorer, server.tau, server.cand_cap,
+                        server.model_sha256,
+                    )
                     response["daemon_ms"] = round(
                         (time.perf_counter() - started) * 1000.0, 3
                     )
             except Exception as exc:  # fail-safe: Mozc retains its native order
-                response = {"ok": False, "error_type": type(exc).__name__, "ranked_surfaces": []}
+                response = {
+                    "ok": False,
+                    "error_type": type(exc).__name__,
+                    "ranked_surfaces": [],
+                    "req_id": None,
+                    "model_sha256": server.model_sha256,
+                }
             self.wfile.write(
                 (json.dumps(response, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
             )
@@ -233,11 +277,19 @@ class RerankServer(socketserver.ThreadingTCPServer):
     allow_reuse_address = True
     daemon_threads = True
 
-    def __init__(self, address: tuple[str, int], scorer: OrtScorer, tau: float, cand_cap: int):
+    def __init__(
+        self,
+        address: tuple[str, int],
+        scorer: OrtScorer,
+        tau: float,
+        cand_cap: int,
+        model_sha256: str = "",
+    ):
         super().__init__(address, Handler)
         self.scorer = scorer
         self.tau = tau
         self.cand_cap = cand_cap
+        self.model_sha256 = model_sha256
 
 
 def main() -> int:
@@ -258,8 +310,13 @@ def main() -> int:
     cand_cap = int(policy.get("cand_cap", DEFAULT_CAND_CAP))
     max_len = int(policy.get("max_len", DEFAULT_MAX_LEN))
     scorer = OrtScorer(Path(args.model), Path(args.tokenizer), max_len, args.intra_op)
-    server = RerankServer((args.host, args.port), scorer, tau, cand_cap)
-    print(f"MozcIME AI v1.0 ready on {args.host}:{args.port}", flush=True)
+    model_sha256 = file_sha256(Path(args.model))
+    server = RerankServer((args.host, args.port), scorer, tau, cand_cap, model_sha256)
+    print(
+        f"MozcIME AI v1.0 ready on {args.host}:{args.port} "
+        f"model_sha256={model_sha256}",
+        flush=True,
+    )
     try:
         server.serve_forever()
     finally:
