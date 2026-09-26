@@ -37,7 +37,10 @@
 #include "rewriter/rewriter_interface.h"
 
 namespace mozc {
-class Segment;
+// NOTE: Do not forward-declare Segment here.  rewriter_interface.h already
+// pulls in converter/segments.h, which declares
+// `using Segment = ::mozc::converter::Segment;` — a later `class Segment;`
+// conflicts with that alias (clang: definition conflicts with type alias).
 
 class RerankRewriter : public RewriterInterface {
  public:
