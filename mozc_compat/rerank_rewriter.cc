@@ -401,7 +401,19 @@ bool TcpExchange(const std::string& host, int port, const std::string& req_line,
 
 }  // namespace
 
-RerankRewriter::RerankRewriter() { LoadConfigFromEnv(); }
+RerankRewriter::RerankRewriter() {
+  LoadConfigFromEnv();
+  const bool diag_configured =
+      !GetEnvOrEmpty("MOZC_RERANK_DIAG_LOG").empty();
+  // Standard Mozc logs only report booleans, never the configured path or
+  // user input. This separates "env was not inherited" from file I/O failure.
+  LOG(INFO) << "RerankDiag startup configured=" << diag_configured
+            << " rerank_enabled=" << enabled_;
+  rerank::DiagEvent event;
+  event.stage = "startup";
+  event.reason = enabled_ ? "enabled" : "disabled";
+  rerank::AppendDiagEvent(event);
+}
 
 RerankRewriter::~RerankRewriter() = default;
 
@@ -558,6 +570,14 @@ bool RerankRewriter::DegradeDisabled() const {
 }
 
 int RerankRewriter::capability(const ConversionRequest& request) const {
+  if (!GetEnvOrEmpty("MOZC_RERANK_DIAG_LOG").empty()) {
+    rerank::DiagEvent event;
+    event.stage = "capability";
+    event.reason = request.request_type() == ConversionRequest::CONVERSION
+                       ? "conversion"
+                       : "other_request";
+    rerank::AppendDiagEvent(event);
+  }
   if (!enabled_) {
     return RewriterInterface::NOT_AVAILABLE;
   }
@@ -569,6 +589,15 @@ int RerankRewriter::capability(const ConversionRequest& request) const {
 
 bool RerankRewriter::Rewrite(const ConversionRequest& request,
                              Segments* segments) const {
+  if (!GetEnvOrEmpty("MOZC_RERANK_DIAG_LOG").empty()) {
+    rerank::DiagEvent event;
+    event.stage = "rewrite_enter";
+    event.reason = enabled_ ? "enabled" : "disabled";
+    event.conversion_segment_count =
+        segments == nullptr ? 0 : static_cast<std::uint32_t>(
+                                       segments->conversion_segments_size());
+    rerank::AppendDiagEvent(event);
+  }
   if (!enabled_ || segments == nullptr ||
       segments->conversion_segments_size() == 0) {
     return false;
