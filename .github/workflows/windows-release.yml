@@ -2,7 +2,7 @@ name: Windows v1 MSI
 
 on:
   push:
-    branches: [main]
+    branches: [main, v2/anonymous-diagnostics]  # temporary test-MSI CI; release is main-only
     paths:
       - ".github/workflows/windows-release.yml"
       - "mozc_compat/**"
@@ -105,6 +105,10 @@ jobs:
           $text = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($server))
           if ($text -notmatch "RerankRewriter" -or $text -notmatch "127\.0\.0\.1:17890") {
             throw "Local reranker markers are missing from mozc_server.exe"
+          }
+          if ($text -notmatch "RerankDiag startup configured=" -or
+              $text -notmatch "RerankDiag file_error=") {
+            throw "Anonymous IME diagnostics markers are missing from mozc_server.exe"
           }
           if ($text -match "deepseek|aliyuncs|token-plan") {
             throw "Cloud backend marker found in the v1 server"
