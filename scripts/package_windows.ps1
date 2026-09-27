@@ -98,14 +98,29 @@ if (-not $MozcDir) {
     $MozcDir = Join-Path $CloneRoot "src"
 
     Invoke-Step "Clone Mozc" {
-        if (-not (Test-Path $CloneRoot)) {
+        # actions/cache restores nested src/third_party_cache and src/third_party/qt
+        # before this step. That can create CloneRoot without a Git repository.
+        # Checking only Test-Path CloneRoot caused Git to discover the PARENT
+        # Mozc-Ai checkout and check out upstream Mozc over the wrong worktree.
+        $nestedGit = Join-Path $CloneRoot ".git"
+        if (-not (Test-Path -LiteralPath $nestedGit)) {
+            if (Test-Path -LiteralPath $CloneRoot) {
+                Write-Host "Removing cache-created directory without its own .git"
+                Remove-Item -LiteralPath $CloneRoot -Recurse -Force
+            }
             git clone $MozcRepo $CloneRoot
             if ($LASTEXITCODE -ne 0) { throw "Mozc clone failed" }
         }
         Push-Location $CloneRoot
         try {
-            # A restored cache may contain a different origin or a shallow
-            # history. Always point origin at the explicitly configured repo.
+            # Refuse to run ANY mutating Git command if Git resolves to the
+            # outer Mozc-Ai checkout instead of the nested Mozc repository.
+            $actualRoot = (git rev-parse --show-toplevel).Trim()
+            if ($LASTEXITCODE -ne 0 -or
+                [IO.Path]::GetFullPath($actualRoot).TrimEnd('\', '/') -ine
+                [IO.Path]::GetFullPath($CloneRoot).TrimEnd('\', '/')) {
+                throw "Mozc clone root mismatch: expected $CloneRoot, got $actualRoot"
+            }
             git remote set-url origin $MozcRepo
             if ($LASTEXITCODE -ne 0) { throw "Mozc origin setup failed" }
             Write-Host "Mozc origin: $(git remote get-url origin)"
@@ -142,6 +157,9 @@ if (-not $MozcDir) {
             $actual = (git rev-parse HEAD).Trim()
             if ($LASTEXITCODE -ne 0 -or $actual -ne $MozcRef) {
                 throw "Pinned Mozc checkout mismatch: expected $MozcRef, actual $actual"
+            }
+            if (-not (Test-Path -LiteralPath (Join-Path $CloneRoot "src/MODULE.bazel"))) {
+                throw "Pinned Mozc checkout is incomplete: src/MODULE.bazel is missing"
             }
         } finally {
             Pop-Location
