@@ -209,6 +209,21 @@ TEST(RerankRewriterTest, DiagLogCountersSummaryAndNoUserText) {
   std::remove(diag_path.c_str());
   SetEnvValue("MOZC_RERANK_DIAG_LOG", diag_path.c_str());
 
+  // Startup/capability/rewrite-entry markers isolate integration failures,
+  // but are not counted as completed rewrite or guard-skip events.
+  rerank::DiagEvent startup;
+  startup.stage = "startup";
+  startup.reason = "enabled";
+  rerank::AppendDiagEvent(startup);
+  rerank::DiagEvent capability;
+  capability.stage = "capability";
+  capability.reason = "conversion";
+  rerank::AppendDiagEvent(capability);
+  rerank::DiagEvent entered;
+  entered.stage = "rewrite_enter";
+  entered.reason = "enabled";
+  rerank::AppendDiagEvent(entered);
+
   // Counters are process-cumulative; assert deltas, not absolute totals.
   const rerank::DiagCounters before = rerank::DiagCountersSnapshot();
 
@@ -275,6 +290,9 @@ TEST(RerankRewriterTest, DiagLogCountersSummaryAndNoUserText) {
   EXPECT_NE(body.find("\"guard_mode\":\"safety\""), std::string::npos);
 
   // Event lines carry session/req correlation and fixed tokens only.
+  EXPECT_NE(body.find("\"stage\":\"startup\""), std::string::npos);
+  EXPECT_NE(body.find("\"stage\":\"capability\""), std::string::npos);
+  EXPECT_NE(body.find("\"stage\":\"rewrite_enter\""), std::string::npos);
   EXPECT_NE(body.find("\"stage\":\"guard_skip\""), std::string::npos);
   EXPECT_NE(body.find("\"daemon_result\":\"skip\""), std::string::npos);
   EXPECT_NE(body.find("\"reason\":\"reading_too_short\""), std::string::npos);
