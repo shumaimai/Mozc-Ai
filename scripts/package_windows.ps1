@@ -104,20 +104,45 @@ if (-not $MozcDir) {
         }
         Push-Location $CloneRoot
         try {
-            # The pinned commit is an ancestor of origin/master. GitHub can
-            # reject direct fetch-by-SHA with "upload-pack: not our ref" even
-            # when a normal clone already has the commit in its object store.
+            # A restored cache may contain a different origin or a shallow
+            # history. Always point origin at the explicitly configured repo.
+            git remote set-url origin $MozcRepo
+            if ($LASTEXITCODE -ne 0) { throw "Mozc origin setup failed" }
+            Write-Host "Mozc origin: $(git remote get-url origin)"
+
             git cat-file -e "$MozcRef^{commit}" 2>$null
             if ($LASTEXITCODE -ne 0) {
-                git fetch origin master
-                if ($LASTEXITCODE -ne 0) { throw "Mozc master fetch failed" }
+                # Do not assume the remote branch is named master. In
+                # particular, a direct SHA fetch can intermittently be denied
+                # by the GitHub upload-pack endpoint. Fetch configured refs
+                # first, then retry the exact pinned SHA if still absent.
+                git fetch --no-tags origin
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Warning "Mozc ordinary fetch failed; trying pinned SHA"
+                }
                 git cat-file -e "$MozcRef^{commit}" 2>$null
                 if ($LASTEXITCODE -ne 0) {
-                    throw "Pinned Mozc commit is not reachable from origin/master: $MozcRef"
+                    $fetched = $false
+                    for ($attempt = 1; $attempt -le 3; $attempt++) {
+                        Write-Host "Fetching pinned Mozc commit (attempt $attempt/3)"
+                        git fetch --no-tags origin $MozcRef
+                        if ($LASTEXITCODE -eq 0) {
+                            git cat-file -e "$MozcRef^{commit}" 2>$null
+                            if ($LASTEXITCODE -eq 0) { $fetched = $true; break }
+                        }
+                        if ($attempt -lt 3) { Start-Sleep -Seconds (2 * $attempt) }
+                    }
+                    if (-not $fetched) {
+                        throw "Pinned Mozc commit unavailable after ordinary fetch and 3 SHA attempts: $MozcRef"
+                    }
                 }
             }
             git checkout --detach $MozcRef
             if ($LASTEXITCODE -ne 0) { throw "Pinned Mozc checkout failed: $MozcRef" }
+            $actual = (git rev-parse HEAD).Trim()
+            if ($LASTEXITCODE -ne 0 -or $actual -ne $MozcRef) {
+                throw "Pinned Mozc checkout mismatch: expected $MozcRef, actual $actual"
+            }
         } finally {
             Pop-Location
         }
