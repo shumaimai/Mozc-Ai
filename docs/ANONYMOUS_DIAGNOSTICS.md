@@ -21,18 +21,36 @@
 ## 使い方
 
 ```powershell
-# 1. 診断ログ有効化（mozc_server再起動で反映）
-[Environment]::SetEnvironmentVariable("MOZC_RERANK_DIAG_LOG", "$env:TEMP\mozc_diag.jsonl", "User")
+# 1. 既存のMozc Low Integrity用ログディレクトリを使用。
+#    TEMPや相対パスは使わず、絶対パスを設定する。
+$diagDir = Join-Path (Split-Path $env:LOCALAPPDATA -Parent) 'LocalLow\Mozc'
+$diagPath = Join-Path $diagDir 'ime_diag.jsonl'
+Test-Path $diagDir   # Trueを確認
+[Environment]::SetEnvironmentVariable('MOZC_RERANK_DIAG_LOG', $diagPath, 'User')
+[Environment]::SetEnvironmentVariable('MOZC_RERANK_DIAG_SUMMARY_EVERY', '1', 'User')
 
-# 2. テストMSIインストール後、いつもの変換操作を数分行う
+# 2. Windowsからサインアウト→サインインしてから固定の合成入力を変換。
+#    mozc_server.exe自身に環境変数が継承される必要がある。
 
-# 3. サマリー確認
-Get-Content $env:TEMP\mozc_diag.jsonl | Select-String '"stage":"summary"'
+# 3. 起動時点でstage=startup、その後capability→rewrite_enter→
+#    guard_skip/rewrite、summaryの順に確認。
+Get-Content $diagPath | Select-String '"stage":"summary"'
 ```
 
-- イベント行: 変換ごとに1行（`stage: rewrite` または `guard_skip`）
-- サマリー行: 既定200イベントごとに自動追記（`MOZC_RERANK_DIAG_SUMMARY_EVERY`で変更可能）
-- オフにする: 環境変数を削除してmozc_server再起動。ログは残るので手動削除してください
+- 起動マーカー: `stage: startup`。呼び出し経路の確認用に`capability`と`rewrite_enter`も記録（入力文字列なし）。これらのマーカーは`rewrite_calls`には含まれません。
+- イベント行: 完了した変換ごとに1行（`stage: rewrite` または `guard_skip`）
+- サマリー行: 既定200件ごとに自動追記（`MOZC_RERANK_DIAG_SUMMARY_EVERY`で変更可能）
+- Windowsで相対パスを指定した場合は、作業ディレクトリに依存しないようファイル名のみを`%LOCALAPPDATA%\..\LocalLow\Mozc\`配下に保存します。推奨は上記の絶対パス指定です。
+- 出力先ディレクトリ作成・ファイルopen・書き込みの失敗は、Mozc標準ログに`RerankDiag file_error=<固定コード> os_code=<数値>`を一度だけ記録。ユーザー入力やファイルパスは記録しません。
+- オフにする: 診断用2つのユーザー環境変数を削除してサインアウト→サインイン（またはサーバー再起動）。既存ログは必要に応じ手動削除。
+
+## ログが出ない場合の切り分け
+
+1. 標準の`mozc_server.exe.log`で`RerankDiag startup configured=...`を探す。存在しなければ、別のサーバーEXEやRerankRewriter未登録を疑い、インストール済みEXEのSHA256をMSIと照合する。
+2. `configured=0`なら診断変数がサーバープロセスに届いていない。単にPowerShellやExplorerに存在するだけでは不十分。
+3. `configured=1`なのにJSONLが無ければ`RerankDiag file_error=`を確認する。相対パスはLocalLowへリダイレクトされるので、元の`outputs`を探さない。
+4. `startup`のみなら`capability`の有無を確認。`capability`のみなら変換要求タイプやRewriterの呼出しを確認。`rewrite_enter`はあるが`rewrite/guard_skip`が無い場合は早期return経路を確認。
+5. 変換ログ`MOZC_RERANK_LOG`とは別物です。個人の変換文字列を含むログはGitHubへpushしない。
 
 ## 合成評価セット
 
