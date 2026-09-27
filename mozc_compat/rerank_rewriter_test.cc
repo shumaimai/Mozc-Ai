@@ -14,6 +14,7 @@
 #include <cstdio>
 #include <cstdint>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <string>
@@ -308,6 +309,36 @@ TEST(RerankRewriterTest, DiagLogCountersSummaryAndNoUserText) {
   EXPECT_EQ(body.find("きしゃ"), std::string::npos);
   EXPECT_EQ(body.find("駅に"), std::string::npos);
 }
+
+#ifdef _WIN32
+TEST(RerankRewriterTest, RelativeDiagPathUsesExistingLocalLowMozcFolder) {
+  const char* local_app_data = std::getenv("LOCALAPPDATA");
+  ASSERT_NE(local_app_data, nullptr);
+  const std::filesystem::path dir =
+      std::filesystem::path(local_app_data).parent_path() / "LocalLow" / "Mozc";
+  std::error_code ec;
+  std::filesystem::create_directories(dir, ec);
+  ASSERT_FALSE(ec);
+  const std::filesystem::path expected = dir / "mozc_diag_relative_test.jsonl";
+  std::filesystem::remove(expected, ec);
+
+  SetEnvValue("MOZC_RERANK_DIAG_LOG",
+              "outputs/mozc_diag_relative_test.jsonl");
+  rerank::DiagEvent event;
+  event.stage = "startup";
+  event.reason = "enabled";
+  rerank::AppendDiagEvent(event);
+  SetEnvValue("MOZC_RERANK_DIAG_LOG", "");
+
+  std::ifstream in(expected);
+  ASSERT_TRUE(in) << "relative path should resolve beneath LocalLow/Mozc";
+  std::string body((std::istreambuf_iterator<char>(in)),
+                   std::istreambuf_iterator<char>());
+  EXPECT_NE(body.find("\"stage\":\"startup\""), std::string::npos);
+  in.close();
+  std::filesystem::remove(expected, ec);
+}
+#endif
 
 TEST(RerankRewriterTest, GuardSkipsShortReadingWithoutHook) {
 #ifdef _WIN32
