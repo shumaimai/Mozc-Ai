@@ -8,14 +8,19 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cerrno>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <mutex>
 #include <random>
 #include <string>
+#include <system_error>
 #include <vector>
+
+#include "absl/log/log.h"
 
 namespace mozc {
 namespace rerank {
@@ -24,6 +29,69 @@ namespace {
 std::string GetEnvOrEmpty(const char* name) {
   const char* v = std::getenv(name);
   return v == nullptr ? std::string() : std::string(v);
+}
+
+// Failures must be observable, but never print the path or user input.
+// Rate-limit errors so a bad setting cannot flood the normal Mozc log.
+void ReportDiagFileError(const char* code, int os_code) {
+  static std::atomic<bool> reported{false};
+  if (!reported.exchange(true, std::memory_order_relaxed)) {
+    LOG(ERROR) << "RerankDiag file_error=" << code << " os_code=" << os_code;
+  }
+}
+
+std::string ResolvedDiagPath() {
+  const std::string configured = GetEnvOrEmpty("MOZC_RERANK_DIAG_LOG");
+  if (configured.empty()) {
+    return std::string();  // Explicit opt-in remains mandatory.
+  }
+#ifdef _WIN32
+  const std::filesystem::path requested(configured);
+  if (requested.is_relative()) {
+    // mozc_server may run at Low Integrity with an unexpected working
+    // directory. Never open a relative path against Program Files or the
+    // process CWD. Put its filename in Mozc's existing LocalLow directory.
+    const std::string local_app_data = GetEnvOrEmpty("LOCALAPPDATA");
+    const std::filesystem::path local(local_app_data);
+    const std::filesystem::path filename = requested.filename();
+    if (!local.is_absolute() || filename.empty()) {
+      ReportDiagFileError("relative_path_no_locallow", 0);
+      return std::string();
+    }
+    return (local.parent_path() / "LocalLow" / "Mozc" / filename).string();
+  }
+#endif
+  return configured;
+}
+
+bool OpenDiagFile(std::ofstream* out) {
+  const std::string path = ResolvedDiagPath();
+  if (path.empty()) {
+    return false;
+  }
+  const std::filesystem::path parent = std::filesystem::path(path).parent_path();
+  if (!parent.empty()) {
+    std::error_code ec;
+    std::filesystem::create_directories(parent, ec);
+    if (ec) {
+      ReportDiagFileError("create_parent_failed", ec.value());
+      return false;
+    }
+  }
+  errno = 0;
+  out->open(path, std::ios::app | std::ios::binary);
+  if (!*out) {
+    ReportDiagFileError("open_failed", errno);
+    return false;
+  }
+  return true;
+}
+
+void CheckDiagWrite(std::ofstream* out) {
+  out->flush();
+  if (!out->good()) {
+    ReportDiagFileError("write_failed", errno);
+  }
 }
 
 bool IsHexChar(char c) {
@@ -256,19 +324,19 @@ void SetReportedModelSha256(std::string_view sha256) {
 }
 
 void FlushDiagSummary() {
-  const std::string path = GetEnvOrEmpty("MOZC_RERANK_DIAG_LOG");
-  if (path.empty()) {
+  if (GetEnvOrEmpty("MOZC_RERANK_DIAG_LOG").empty()) {
     return;
   }
   const std::string session_id = DiagSessionId();
   const std::string model_sha = DiagModelSha256();
   const std::string mode = DiagGuardMode();
-  std::ofstream out(path, std::ios::app | std::ios::binary);
-  if (!out) {
+  std::ofstream out;
+  if (!OpenDiagFile(&out)) {
     return;
   }
   std::lock_guard<std::mutex> lock(StateMutex());
   AppendSummaryLocked(&out, State(), session_id, model_sha, mode);
+  CheckDiagWrite(&out);
 }
 
 DiagCounters DiagCountersSnapshot() {
@@ -347,12 +415,11 @@ void AppendDiagEvent(const DiagEvent& event) {
     }
   }
 
-  const std::string path = GetEnvOrEmpty("MOZC_RERANK_DIAG_LOG");
-  if (path.empty()) {
+  if (GetEnvOrEmpty("MOZC_RERANK_DIAG_LOG").empty()) {
     return;
   }
-  std::ofstream out(path, std::ios::app | std::ios::binary);
-  if (!out) {
+  std::ofstream out;
+  if (!OpenDiagFile(&out)) {
     return;
   }
   {
@@ -362,6 +429,7 @@ void AppendDiagEvent(const DiagEvent& event) {
       AppendSummaryLocked(&out, State(), session_id, model_sha, mode);
     }
   }
+  CheckDiagWrite(&out);
 }
 
 }  // namespace rerank
