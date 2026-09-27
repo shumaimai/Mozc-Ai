@@ -100,11 +100,27 @@ if (-not $MozcDir) {
     Invoke-Step "Clone Mozc" {
         if (-not (Test-Path $CloneRoot)) {
             git clone $MozcRepo $CloneRoot
+            if ($LASTEXITCODE -ne 0) { throw "Mozc clone failed" }
         }
         Push-Location $CloneRoot
-        git fetch origin $MozcRef
-        git checkout $MozcRef
-        Pop-Location
+        try {
+            # The pinned commit is an ancestor of origin/master. GitHub can
+            # reject direct fetch-by-SHA with "upload-pack: not our ref" even
+            # when a normal clone already has the commit in its object store.
+            git cat-file -e "$MozcRef^{commit}" 2>$null
+            if ($LASTEXITCODE -ne 0) {
+                git fetch origin master
+                if ($LASTEXITCODE -ne 0) { throw "Mozc master fetch failed" }
+                git cat-file -e "$MozcRef^{commit}" 2>$null
+                if ($LASTEXITCODE -ne 0) {
+                    throw "Pinned Mozc commit is not reachable from origin/master: $MozcRef"
+                }
+            }
+            git checkout --detach $MozcRef
+            if ($LASTEXITCODE -ne 0) { throw "Pinned Mozc checkout failed: $MozcRef" }
+        } finally {
+            Pop-Location
+        }
     }
 }
 
