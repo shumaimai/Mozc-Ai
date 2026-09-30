@@ -309,6 +309,15 @@ bool TcpExchange(const std::string& host, int port, const std::string& req_line,
   if (resp == nullptr || host.empty() || port <= 0 || timeout_ms <= 0) {
     return false;
   }
+  // One deadline covers connect, send, and every receive. A socket timeout
+  // applied separately to each receive lets partial responses extend the
+  // IME stall far beyond the configured budget.
+  const auto deadline = std::chrono::steady_clock::now() +
+                        std::chrono::milliseconds(timeout_ms);
+  const auto remaining_ms = [&]() {
+    return static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(
+        deadline - std::chrono::steady_clock::now()).count());
+  };
   RerankSocket s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
   if (s == kInvalidRerankSocket) {
     return false;
@@ -337,7 +346,8 @@ bool TcpExchange(const std::string& host, int port, const std::string& req_line,
     CloseRerankSocket(s);
     return false;
   }
-  if (cr != 0 && !WaitSocket(s, true, timeout_ms)) {
+  if (cr != 0 &&
+      (remaining_ms() <= 0 || !WaitSocket(s, true, remaining_ms()))) {
     CloseRerankSocket(s);
     return false;
   }
@@ -353,25 +363,20 @@ bool TcpExchange(const std::string& host, int port, const std::string& req_line,
     CloseRerankSocket(s);
     return false;
   }
-  SetNonBlocking(s, false);
-#ifdef _WIN32
-  DWORD tv = static_cast<DWORD>(timeout_ms);
-  setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&tv),
-             sizeof(tv));
-  setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char*>(&tv),
-             sizeof(tv));
-#else
-  timeval tv;
-  tv.tv_sec = timeout_ms / 1000;
-  tv.tv_usec = (timeout_ms % 1000) * 1000;
-  setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-  setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
-#endif
-
   size_t off = 0;
   while (off < req_line.size()) {
+    if (remaining_ms() <= 0 || !WaitSocket(s, true, remaining_ms())) {
+      CloseRerankSocket(s);
+      return false;
+    }
     const int n = send(s, req_line.data() + off,
-                       static_cast<int>(req_line.size() - off), 0);
+                       static_cast<int>(req_line.size() - off),
+#ifdef _WIN32
+                       0
+#else
+                       MSG_NOSIGNAL
+#endif
+    );
     if (n <= 0) {
       CloseRerankSocket(s);
       return false;
@@ -383,6 +388,10 @@ bool TcpExchange(const std::string& host, int port, const std::string& req_line,
   buf.reserve(1024);
   char tmp[1024];
   while (buf.find('\n') == std::string::npos) {
+    if (remaining_ms() <= 0 || !WaitSocket(s, false, remaining_ms())) {
+      CloseRerankSocket(s);
+      return false;
+    }
     const int n = recv(s, tmp, sizeof(tmp), 0);
     if (n <= 0) {
       CloseRerankSocket(s);
@@ -826,6 +835,23 @@ bool RerankRewriter::CallHookWithTimeout(
     bool* timed_out) const {
   if (timed_out != nullptr) {
     *timed_out = false;
+  }
+  if (hook_cmd_.empty()) {
+    // TcpExchange enforces a total deadline itself. Wrapping it in std::async
+    // creates a thread per keystroke and its future destructor joins even
+    // after wait_for reports a timeout.
+    const auto started = std::chrono::steady_clock::now();
+    const bool ok = CallDaemon(reading, nbest, context_prev, req_id, out);
+    if (ok) {
+      NoteSuccess();
+    } else {
+      NoteTimeout();
+      if (timed_out != nullptr) {
+        *timed_out = std::chrono::steady_clock::now() - started >=
+                     std::chrono::milliseconds(timeout_ms_ - 2);
+      }
+    }
+    return ok;
   }
   auto fut = std::async(
       std::launch::async,

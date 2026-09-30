@@ -10,6 +10,12 @@ MSIに収録しており、Ollama、Python、クラウドAPIはインストー�
 > v1.0.2への戻し方は [docs/WINDOWS_TEST_BUILD.md](docs/WINDOWS_TEST_BUILD.md)
 > を参照してください。
 
+この作業ツリーの `runtime/model/` は、2026年9月30日に公開データで学習した
+listwise版の30Mモデルへ更新しています。推論の重複計算削減と200msの通信期限の
+修正も含みます。測定条件と比較結果は
+[改善結果](MozcAI_improvement_20260930.md)を参照してください。
+既存の公開MSIに含まれるモデルは、以下のリリース時点のものです。
+
 ## v1.0.2 の要点
 
 - 配布物: `MozcAI-1.0.2-x64.msi`

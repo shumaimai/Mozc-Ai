@@ -42,7 +42,7 @@ foreach ($line in Get-Content -LiteralPath $sumsPath) {
     $actual = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($actual -ne $expected) { Fail "hash mismatch: $rel (expected $expected, got $actual)" }
 }
-Write-Host "SHA256SUMS all matched (installed payload == frozen Phase 2 model)"
+Write-Host "SHA256SUMS all matched (installed payload == pinned model assets)"
 
 $onnxLen = (Get-Item (Join-Path $ModelDir "cross_encoder_fp32.onnx")).Length
 if ($onnxLen -lt 100MB) { Fail "ONNX suspiciously small ($onnxLen bytes)" }

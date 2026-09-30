@@ -150,9 +150,15 @@ class OrtScorer:
         )
 
     def score(self, texts: list[str]) -> list[float]:
+        if not texts:
+            return []
+        # Mozc may expose the same surface with several dictionary/POS paths.
+        # All of those paths receive identical model text. Compute each text
+        # once, then restore the original order and multiplicity for the gate.
+        unique_texts = list(dict.fromkeys(texts))
         rows = [
             [1] + self.tokenizer.encode(text, out_type=int)[: self.max_len - 2] + [2]
-            for text in texts
+            for text in unique_texts
         ]
         width = max(len(row) for row in rows)
         input_ids = np.full((len(rows), width), 3, dtype=np.int64)
@@ -163,7 +169,9 @@ class OrtScorer:
         result = self.session.run(
             None, {"input_ids": input_ids, "attention_mask": attention_mask}
         )[0]
-        return [float(value) for value in np.asarray(result).reshape(-1).tolist()]
+        values = np.asarray(result).reshape(-1).tolist()
+        scores = dict(zip(unique_texts, values))
+        return [float(scores[text]) for text in texts]
 
 
 def file_sha256(path: Path) -> str:
@@ -300,7 +308,7 @@ def main() -> int:
     parser.add_argument("--model", default=str(base / "model" / "cross_encoder_fp32.onnx"))
     parser.add_argument("--tokenizer", default=str(base / "model" / "tokenizer"))
     parser.add_argument("--policy", default=str(base / "model" / "margin_policy.json"))
-    parser.add_argument("--intra-op", type=int, default=max(1, os.cpu_count() or 1))
+    parser.add_argument("--intra-op", type=int, default=None)
     args = parser.parse_args()
     if args.host not in {"127.0.0.1", "localhost", "::1"}:
         print("refusing non-loopback bind", file=sys.stderr)
@@ -309,7 +317,8 @@ def main() -> int:
     tau = float(policy.get("tau", DEFAULT_TAU))
     cand_cap = int(policy.get("cand_cap", DEFAULT_CAND_CAP))
     max_len = int(policy.get("max_len", DEFAULT_MAX_LEN))
-    scorer = OrtScorer(Path(args.model), Path(args.tokenizer), max_len, args.intra_op)
+    intra = args.intra_op if args.intra_op is not None else int(policy.get("intra_op", min(4, os.cpu_count() or 1)))
+    scorer = OrtScorer(Path(args.model), Path(args.tokenizer), max_len, intra)
     model_sha256 = file_sha256(Path(args.model))
     server = RerankServer((args.host, args.port), scorer, tau, cand_cap, model_sha256)
     print(
