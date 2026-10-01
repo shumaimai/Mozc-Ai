@@ -159,6 +159,7 @@ Windowsは `scripts/package_windows.ps1` でMSIを再ビルドし、
   正しく読み込みます。候補cap・期限・入力長・文脈長も同じ処理で取得します。
 - Windows smokeはインストール済みONNXの実SHAとping・scored responseのSHAを照合し、
   別モデルが稼働している場合に失敗します。MSI抽出後のCI smokeにも同じ照合を追加しました。
+  また、標準Windows PowerShell 5.1が日本語を誤読しないようsmokeをUTF-8 BOM付きにしました。
 
 修正後のCPUテストはreranker **62件**、dataset **14件**が成功しました。
 追加9件は実C++診断モジュールと実Abseilパーサーで検証します。

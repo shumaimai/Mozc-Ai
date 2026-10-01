@@ -1,4 +1,4 @@
-# Mozc AI 1.0.3-test1 real-machine smoke test (SYNTHETIC INPUT ONLY).
+﻿# Mozc AI 1.0.3-test1 real-machine smoke test (SYNTHETIC INPUT ONLY).
 #
 # Sends only fixed synthetic strings to the local rerank daemon.  No user
 # input is read, recorded, or transmitted anywhere.  Safe to paste output.
