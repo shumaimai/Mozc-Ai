@@ -22,6 +22,11 @@ bool GuardsEnabled();
 // explicit env value > policy override (margin_policy.json "guard_mode",
 // set by RerankRewriter::LoadPolicyFile) > built-in default (safety).
 void SetPolicyGuardMode(std::string_view mode);
+
+// Current policy-layer guard mode override (margin_policy.json "guard_mode",
+// empty when unset).  Used by the anonymous diagnostics module to report the
+// resolved guard mode without reading user data.
+std::string PolicyGuardModeOverride();
 bool StrictEligibleGuardEnabled();
 bool IsEligibleReading(std::string_view reading);
 bool ContextEmptyOrSymbol(std::string_view context_prev);

@@ -216,6 +216,11 @@ void SetPolicyGuardMode(std::string_view mode) {
   g_policy_guard_mode = std::string(mode);
 }
 
+std::string PolicyGuardModeOverride() {
+  std::lock_guard<std::mutex> lock(g_policy_guard_mode_mutex);
+  return g_policy_guard_mode;
+}
+
 namespace {
 
 // Python usage_guard.guard_mode() lowercases before comparing; mirror that so

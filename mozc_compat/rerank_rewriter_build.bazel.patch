@@ -4,11 +4,13 @@ mozc_cc_library(
     name = "rerank_rewriter",
     srcs = [
         "context_clip.cc",
+        "rerank_diag.cc",
         "rerank_guard.cc",
         "rerank_rewriter.cc",
     ],
     hdrs = [
         "context_clip.h",
+        "rerank_diag.h",
         "rerank_eligible_readings.inc",
         "rerank_guard.h",
         "rerank_margin.h",
