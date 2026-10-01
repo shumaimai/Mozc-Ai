@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
+#include <initializer_list>
 #include <mutex>
 #include <random>
 #include <string>
@@ -42,6 +43,20 @@ std::string SanitizeSha256(const std::string& v) {
     }
   }
   return v;
+}
+
+// Return the allowlisted constant, never the caller's response string.
+const char* FixedToken(const char* value,
+                       std::initializer_list<const char*> allowed) {
+  if (value == nullptr) {
+    return "";
+  }
+  for (const char* token : allowed) {
+    if (std::string_view(value) == token) {
+      return token;
+    }
+  }
+  return "unknown";
 }
 
 std::mutex g_reported_model_sha_mutex;
@@ -165,10 +180,18 @@ DiagPercentiles PercentilesOf(const std::vector<double>& samples) {
 std::string JsonEscapeToken(const char* s) {
   std::string out = "\"";
   for (const char* p = s; *p != '\0'; ++p) {
-    if (*p == '"' || *p == '\\') {
-      out.push_back('\\');
+    const unsigned char c = static_cast<unsigned char>(*p);
+    if (c < 0x20) {
+      constexpr char kHex[] = "0123456789abcdef";
+      out += "\\u00";
+      out.push_back(kHex[c >> 4]);
+      out.push_back(kHex[c & 0xf]);
+    } else {
+      if (*p == '"' || *p == '\\') {
+        out.push_back('\\');
+      }
+      out.push_back(*p);
     }
-    out.push_back(*p);
   }
   out.push_back('"');
   return out;
@@ -290,7 +313,16 @@ DiagCounters DiagCountersSnapshot() {
   return c;
 }
 
-void AppendDiagEvent(const DiagEvent& event) {
+void AppendDiagEvent(const DiagEvent& input) {
+  // Enforce the privacy contract for every caller, including arbitrary hook
+  // responses. Escaping alone would still retain user text in the log.
+  DiagEvent event = input;
+  event.stage = FixedToken(input.stage, {"", "rewrite", "guard_skip", "summary"});
+  event.daemon_result =
+      FixedToken(input.daemon_result, {"", "ok", "fail", "timeout", "skip"});
+  event.reason = FixedToken(input.reason,
+                           {"", "reading_too_short", "context_empty_or_symbol",
+                            "reading_not_eligible", "junk_candidate"});
   const std::string session_id = DiagSessionId();
   const std::string model_sha = DiagModelSha256();
   const std::string mode = DiagGuardMode();

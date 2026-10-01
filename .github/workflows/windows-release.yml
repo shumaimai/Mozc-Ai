@@ -196,6 +196,8 @@ jobs:
             if (-not $resp.model_sha256 -or $resp.model_sha256 -notmatch '^[0-9a-f]{64}$') { throw "Daemon response lacks valid model_sha256" }
             $ping = Invoke-Rerank '{"op":"ping"}'
             if ($ping.model_sha256 -ne $resp.model_sha256) { throw "model_sha256 mismatch between ping and rerank responses" }
+            $installedSha = (Get-FileHash -LiteralPath (Join-Path $root "ai/model/cross_encoder_fp32.onnx") -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($resp.model_sha256 -ne $installedSha) { throw "Loaded model_sha256 differs from extracted ONNX" }
             Write-Host "Daemon smoke OK: ok=true guard_skip=false margin=$($resp.margin) req_id=777 model_sha256=$($resp.model_sha256)"
           } finally {
             Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue

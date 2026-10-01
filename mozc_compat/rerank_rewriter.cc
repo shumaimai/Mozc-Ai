@@ -474,33 +474,15 @@ void RerankRewriter::LoadPolicyFile(const std::string& path) {
     LOG(WARNING) << "RerankRewriter policy unreadable: " << path;
     return;
   }
-  auto num = [&](const char* key, double* out) {
-    const std::string needle = absl::StrCat("\"", key, "\"");
-    size_t pos = json.find(needle);
-    if (pos == std::string::npos) {
-      return;
-    }
-    pos = json.find(':', pos + needle.size());
-    if (pos == std::string::npos) {
-      return;
-    }
-    ++pos;
-    while (pos < json.size() &&
-           (json[pos] == ' ' || json[pos] == '\n' || json[pos] == '\t')) {
-      ++pos;
-    }
-    double v = 0;
-    if (absl::SimpleAtod(json.substr(pos, 32), &v)) {
-      *out = v;
-    }
-  };
   double tau = tau_, cap = cand_cap_, tmax = timeout_ms_, ml = max_len_,
          cc = context_chars_;
-  num("tau", &tau);
-  num("cand_cap", &cap);
-  num("timeout_ms", &tmax);
-  num("max_len", &ml);
-  num("context_clip_max_chars", &cc);
+  // Reuse response parsing: SimpleAtod must receive only the numeric token,
+  // not the following comma/key. Missing or invalid fields retain defaults.
+  ExtractJsonDouble(json, "tau", &tau);
+  ExtractJsonDouble(json, "cand_cap", &cap);
+  ExtractJsonDouble(json, "timeout_ms", &tmax);
+  ExtractJsonDouble(json, "max_len", &ml);
+  ExtractJsonDouble(json, "context_clip_max_chars", &cc);
   tau_ = static_cast<float>(tau);
   if (cap > 0) {
     cand_cap_ = static_cast<int>(cap);
@@ -768,7 +750,7 @@ bool RerankRewriter::Rewrite(const ConversionRequest& request,
     event.conversion_segment_count = static_cast<std::uint32_t>(
         segments->conversion_segments_size());
     event.daemon_result = "ok";
-    event.reason = result.reason.c_str();
+    event.reason = result.reason.c_str();  // Allowlisted by AppendDiagEvent.
     event.overwrite = result.overwritten;
     event.cpp_ms = SteadyNowMs() - start_ms;
     event.infer_ms = result.infer_ms;

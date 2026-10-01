@@ -147,3 +147,22 @@ Windowsは `scripts/package_windows.ps1` でMSIを再ビルドし、
 `windows_smoke.ps1`で新しいmodel hashを確認する必要があります。
 今回のLinuxでの測定は、WindowsのIME組み込み・インストーラー試験を代替しません。
 試験用daemonは停止し、学習ジョブも完了しています。
+
+## PRレビューへの対応（2026-10-01）
+
+[公開PR #18のレビュー](https://github.com/shumaimai/Mozc-Ai/pull/18#issuecomment-5927714756)
+の3件を修正しました。
+
+- 匿名診断は入口でreason・stage・daemon_resultを既知の固定コードへ制限し、
+  未知の応答文字列を`unknown`へ置換します。JSON文字列の制御文字もエスケープします。
+- C++ policy読込は既存の数値トークン抽出処理を使い、同梱policyのtau=1.5を
+  正しく読み込みます。候補cap・期限・入力長・文脈長も同じ処理で取得します。
+- Windows smokeはインストール済みONNXの実SHAとping・scored responseのSHAを照合し、
+  別モデルが稼働している場合に失敗します。MSI抽出後のCI smokeにも同じ照合を追加しました。
+
+修正後のCPUテストはreranker **62件**、dataset **14件**が成功しました。
+追加9件は実C++診断モジュールと実Abseilパーサーで検証します。
+同じ回帰テストが修正前commitのtau不一致と応答本文の混入を検出することも確認しました。
+Windowsでは実smoke内のSHA照合関数を8ケースで検証するCIを追加し、
+Windows PowerShellとPowerShell 7の両方で実行します。
+これはモデル識別処理の検証であり、MSIインストールやIME組み込み試験は引き続き未実施です。

@@ -23,6 +23,15 @@ function Fail([string]$msg) {
     exit 1
 }
 
+function Assert-RerankModelSha256([string]$ExpectedSha, [string]$ActualSha, [string]$ResponseName) {
+    if (-not $ActualSha -or $ActualSha -notmatch '^[0-9a-f]{64}$') {
+        throw "SMOKE FAIL: $ResponseName lacks valid model_sha256"
+    }
+    if ($ActualSha -ne $ExpectedSha) {
+        throw "SMOKE FAIL: $ResponseName model_sha256 differs from installed ONNX (expected $ExpectedSha, got $ActualSha)"
+    }
+}
+
 Write-Host "== 1. Installed payload check =="
 foreach ($p in @($Daemon, (Join-Path $ModelDir "cross_encoder_fp32.onnx"), (Join-Path $ModelDir "SHA256SUMS"), (Join-Path $ModelDir "margin_policy.json"))) {
     if (-not (Test-Path -LiteralPath $p)) { Fail "missing: $p" }
@@ -47,6 +56,7 @@ Write-Host "SHA256SUMS all matched (installed payload == pinned model assets)"
 $onnxLen = (Get-Item (Join-Path $ModelDir "cross_encoder_fp32.onnx")).Length
 if ($onnxLen -lt 100MB) { Fail "ONNX suspiciously small ($onnxLen bytes)" }
 Write-Host "ONNX size OK: $onnxLen bytes"
+$installedSha = (Get-FileHash -LiteralPath (Join-Path $ModelDir "cross_encoder_fp32.onnx") -Algorithm SHA256).Hash.ToLowerInvariant()
 
 Write-Host "== 2. Daemon process / port =="
 $proc = Get-Process -Name "rerank_daemon" -ErrorAction SilentlyContinue
@@ -85,7 +95,7 @@ Write-Host "== 3. Synthetic requests (fixed strings only) =="
 $ping = Invoke-Request '{"op":"ping"}' 10000
 if ($ping.line -notmatch '"op"\s*:\s*"pong"') { Fail "ping failed: $($ping.line)" }
 $pingSha = ($ping.line | ConvertFrom-Json).model_sha256
-if (-not $pingSha -or $pingSha -notmatch '^[0-9a-f]{64}$') { Fail "ping lacks valid model_sha256: $pingSha" }
+Assert-RerankModelSha256 $installedSha $pingSha "ping"
 Write-Host "ping OK ($([math]::Round($ping.ms,1)) ms) model_sha256=$pingSha"
 
 # Scored synthetic conversion: model must actually run. req_id is an
@@ -98,6 +108,8 @@ if ($j1.guard_skip -ne $false) { Fail "guard_skip=true on scored request - the m
 if ($null -eq $j1.margin) { Fail "no margin in response - scoring did not execute" }
 if ($j1.req_id -ne 777) { Fail "req_id echo missing - anonymous round-trip proof broken" }
 if ($null -eq $j1.infer_ms) { Fail "infer_ms missing - daemon timing diagnostics broken" }
+Assert-RerankModelSha256 $installedSha $j1.model_sha256 "scored response"
+Write-Host "model identity OK: installed ONNX == ping == scored response"
 
 # Guard skip: short reading must never reach the model.
 $r2 = Invoke-Request '{"reading":"い","context_prev":"文化","nbest":["位","李"]}' 10000

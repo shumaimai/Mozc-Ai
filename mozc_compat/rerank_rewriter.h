@@ -81,7 +81,7 @@ class RerankRewriter : public RewriterInterface {
     // Daemon-reported sha256 of the actually loaded ONNX model
     // (empty when the daemon did not report it).
     std::string model_sha256;
-    // Daemon-reported guard skip reason (fixed token, empty normally).
+    // Response reason; diagnostics discard values outside the fixed allowlist.
     std::string reason;
     // Echo of the anonymous request id sent with the daemon call
     // (0 when the daemon did not echo it).

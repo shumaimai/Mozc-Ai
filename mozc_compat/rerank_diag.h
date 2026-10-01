@@ -3,8 +3,8 @@
 //
 // Hard privacy rule: this module records only fixed stage names, fixed reason
 // codes, byte/count metadata, latencies, and process-local identifiers.  It
-// has no API that accepts user-provided text (readings, candidates, context),
-// so input strings cannot leak into diagnostics by construction.
+// discards unexpected string values at AppendDiagEvent's boundary, including
+// arbitrary hook/daemon reason strings, before updating counters or logging.
 
 #ifndef MOZC_REWRITER_RERANK_DIAG_H_
 #define MOZC_REWRITER_RERANK_DIAG_H_
@@ -49,8 +49,8 @@ void SetReportedModelSha256(std::string_view sha256);
 // flush a stable summary line before reading the log.  No-op otherwise.
 void FlushDiagSummary();
 
-// One diagnostics event.  Every string field is a compile-time constant or a
-// fixed sanitized token from the helpers above.
+// One diagnostics event. AppendDiagEvent normalizes every string field to
+// an allowlisted constant; unknown values become "unknown" and null becomes "".
 struct DiagEvent {
   const char* stage = "";       // "rewrite" | "guard_skip" | "summary"
   std::uint64_t req_id = 0;
@@ -65,6 +65,7 @@ struct DiagEvent {
   // Fixed tokens: daemon result "ok" | "fail" | "timeout" | "skip" | "";
   // guard skip reason "reading_too_short" | "context_empty_or_symbol" |
   // "reading_not_eligible" | "".
+  // Reason also accepts "junk_candidate"; arbitrary response text is discarded.
   const char* daemon_result = "";
   const char* reason = "";
   bool overwrite = false;

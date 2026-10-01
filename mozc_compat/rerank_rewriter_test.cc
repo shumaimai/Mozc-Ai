@@ -199,7 +199,7 @@ TEST(RerankRewriterTest, DiagReqIdIncrements) {
 TEST(RerankRewriterTest, DiagLogCountersSummaryAndNoUserText) {
   // Anonymous diagnostics contract: counters, fixed tokens, byte/count
   // metadata, latencies, and ids only — never user-provided strings.  The
-  // module API has no way to pass text, so this test pins the emitted JSONL.
+  // module discards unknown string values, so this test pins the emitted JSONL.
   rerank::SetPolicyGuardMode("");
   SetEnvValue("MOZC_RERANK_GUARD_MODE", "safety");
   SetEnvValue("MOZC_RERANK_DIAG_MODEL_SHA256",
@@ -285,8 +285,8 @@ TEST(RerankRewriterTest, DiagLogCountersSummaryAndNoUserText) {
   EXPECT_NE(body.find("\"req_id\":3"), std::string::npos);
   EXPECT_NE(body.find("\"session_id\":\""), std::string::npos);
 
-  // Privacy regression guard: no user text can appear because the API cannot
-  // carry it; assert the synthetic strings a buggy caller might leak.
+  // Privacy regression guard: only allowlisted tokens may reach the log;
+  // assert the synthetic strings a buggy caller might leak.
   EXPECT_EQ(body.find("きしゃ"), std::string::npos);
   EXPECT_EQ(body.find("駅に"), std::string::npos);
 }
